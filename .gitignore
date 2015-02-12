@@ -1,0 +1,10 @@
+/classes
+/bin
+# Eclipse
+.classpath
+.settings/
+.project
+.externalToolBuilders/
+
+# Maven
+target/
