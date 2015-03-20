@@ -5,7 +5,7 @@
             [routing.generator.routingkey :as gen] 
             [routing.generator.common :refer [as-flat-set]] 
             [clojure.set :refer [difference]]
-            [clojure.tools.logging :as log :refer [info infof warnf]]
+            [clojure.tools.logging :as log :refer [info infof warnf debug]]
             [schema.core :as s])
   (:import java.net.URLEncoder))
 (defn ^:private http-method [langohr-delegation-fn]
@@ -55,6 +55,7 @@
   "Load exhanges, queues and bindings via RabbitMQ's http api and return the canonical representation
 used by `construct-routing`."
   [vhost creds & {:keys [incl-federation?]}]
+  (debug "fetching RabbitMQ configuration for vhost " vhost) 
   (with-credentials creds
     (let [skip? (fn [n] 
                   (or (empty? n)

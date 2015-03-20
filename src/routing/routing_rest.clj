@@ -69,7 +69,7 @@
   :handle-ok (fn [ctx] 
                (let [creds @management-api
                      vhosts (if (string? vhost) [vhost] vhost)
-                     declarations (if vhosts 
+                     declarations (if (not-empty vhosts) 
                                     (mapcat #(concat (routing.generator.io/fetch-routing % creds :incl-federation? with-federation?)
                                                      (routing.generator.io/fetch-shovels % creds)) vhosts)
                                     (mapcat #(map (fn [decl] (assoc decl :host (select-keys (meta %) [:name :aliases]))) 
@@ -131,7 +131,7 @@
   :malformed? (fn [r]
                 (when (post? r)
                   (let [contracts (underscore->minus (get-in r [:request :params]))
-;                        _ (def contracts contracts)
+                        _ (def contracts contracts)
                         data (contracts-json-to-clj contracts)]
                     [(su/error? data) {::data data}]))) 
   :handle-malformed #(do (info "was called") 

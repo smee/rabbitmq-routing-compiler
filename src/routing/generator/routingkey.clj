@@ -204,7 +204,7 @@ Users have no permissions to change anything themselves."
           :arguments {:name queue 
                       :durable true 
                       :auto_delete false 
-                      :arguments {}}})])))
+                      :arguments {}}})]))) ; TODO x-dead-letter-exchange, see https://www.rabbitmq.com/dlx.html
 
 (defn construct-federations [contracts {:keys [management-user management-password ppu-vhost]}]
   (as-flat-set 

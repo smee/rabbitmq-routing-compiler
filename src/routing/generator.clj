@@ -128,17 +128,7 @@ currently present within a rabbitmq instance."
           @routing.contracts/contracts
           ;routing.contracts/empty-contracts
           @routing.routing-rest/management-api))
-  ; delete everything
-  ; does not delete ppu-vhost!
-  (time (update-routing! routing.contracts/empty-contracts {:ppu-vhost "VH_ppu" 
-    :name "Zone Foo, Area Web"
-    :aliases ["rabbit@VM-FOO-W-CCU" "10.1.2.2:15673"]
-    :management-user "admin"
-    :management-password "pDBQd7uS6llbDwYFOWzF"
-    :management-url "http://10.1.2.2:15673"
-    :shovel-user "shovel"
-    :shovel-password "asdf" 
-    :shovel-password-hash "asdf"}))
+
   
   ; create all remote configurations for the demonstrator
   (doseq [config [@routing.contracts/contracts]

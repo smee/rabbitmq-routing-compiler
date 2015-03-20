@@ -47,12 +47,15 @@
                   :covenants {+CovenantId+ +Covenant+}
                   :collections {+CovenantCollectionId+ #{+CovenantId+}}})
 
-(defn pw [s]
-  (rabbit-password-hash s (byte-array (map byte [1 2 3 4]))))
 
 (def empty-contracts {:users {}
                       :covenants {}
                       :collections {}})
+
+(defn pw [s]
+  (rabbit-password-hash s (byte-array (map byte [1 2 3 4]))))
+
+;;;;;;;;;;;;;;; currently defined contracts ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defonce contracts 
   (atom {:users {"archiver" {:name "archiver"
