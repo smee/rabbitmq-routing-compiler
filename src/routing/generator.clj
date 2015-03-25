@@ -69,38 +69,58 @@
                        (io/fetch-tracing-settings vh creds)))
             (map :name vhosts)))))
 
-(s/defn create-all
+(s/defn create-all-separate-vhosts
+  "Create all declarations for elements in a rabbitmq instance given the contracts data structure 
+and the credentials."
+  [contracts :- routing.contracts/+Contracts+
+   credentials :- io/+Credentials+]
+  (apply as-flat-set
+         ((juxt gen/construct-users
+                gen/construct-user-vhosts
+                gen/construct-permissions
+                gen/construct-private-queue-bindings
+                gen/construct-localusers
+                gen/construct-localuser-covenants                
+                gen/construct-admin-declarations 
+                gen/construct-admin-permissions-for-vhosts
+                gen/construct-routing-key-only
+                gen/construct-alias-routing 
+                gen/construct-delegation-routing
+                gen/construct-tracing
+                gen/construct-unroutable 
+                gen/construct-internal-shovel-user
+                gen/construct-internal-shovels) 
+           contracts credentials (partial str "VH_"))))
+
+(s/defn create-all-single-vhost
   "Create all declarations for elements in a rabbitmq instance given the contracts data structure 
 and the credentials."
   [contracts :- routing.contracts/+Contracts+
    credentials :- io/+Credentials+]
   (as-flat-set
-    (gen/construct-users contracts)
-    (gen/construct-vhosts contracts)
-    (gen/construct-permissions contracts)
-    (gen/construct-private-queue-bindings contracts)
-    (gen/construct-localusers contracts)
-    (gen/construct-localuser-covenants contracts)
-    
-    (gen/construct-admin-declarations contracts credentials) 
-    (gen/construct-routing-key-only contracts credentials)
-    (gen/construct-alias-routing contracts credentials) 
-    (gen/construct-delegation-routing contracts credentials)
-    (gen/construct-tracing contracts credentials)
-    (gen/construct-unroutable contracts credentials) 
-    (gen/construct-internal-shovel-user contracts credentials)
-    (gen/construct-internal-shovels contracts credentials)))
-
+    ((juxt gen/construct-users
+           gen/construct-permissions
+           gen/construct-private-queue-bindings
+           gen/construct-localusers
+           gen/construct-localuser-covenants
+           gen/construct-admin-declarations 
+           gen/construct-routing-key-only
+           gen/construct-alias-routing 
+           gen/construct-delegation-routing
+           gen/construct-tracing
+           gen/construct-unroutable)
+      contracts credentials (constantly (:ppu-vhost credentials)))))
 
 (s/defn update-routing! 
   "Synchronize declarations derived from `contracts` and `credentials` with the configuration
 currently present within a rabbitmq instance." 
   [contracts :- routing.contracts/+Contracts+ 
-   credentials :- io/+Credentials+]
+   credentials :- io/+Credentials+
+   routing-constructor-fn]
   (with-credentials credentials 
-    (let [decls (sort-by identity declaration-comparator (create-all contracts credentials))
+    (let [decls (sort-by identity declaration-comparator (routing-constructor-fn contracts credentials))
           existing (sort-by identity declaration-comparator (fetch-all credentials)) 
-          decl-set (set decls)] (def existing (set existing)) (def decls decl-set) 
+          decl-set (set decls)] 
       ; delete declarations not needed in reverse sorted order
       (doseq [decl (reverse existing) 
               :when (not (contains? decl-set decl))
@@ -127,7 +147,8 @@ currently present within a rabbitmq instance."
   (time (update-routing! 
           @routing.contracts/contracts
           ;routing.contracts/empty-contracts
-          @routing.routing-rest/management-api))
+          @routing.routing-rest/management-api
+          create-all-separate-vhosts))
 
   
   ; create all remote configurations for the demonstrator
@@ -135,7 +156,7 @@ currently present within a rabbitmq instance."
           :let [settings (merge @routing.routing-rest/management-api (meta config))
                 config-name (or (:name settings) (:management-url settings))]]
     (info "configuring" config-name)
-    (update-routing! config settings))
+    (update-routing! config settings routing-constructor-fn))
   
   (set-tracing! "VH_ppu" true @routing.routing-rest/management-api)
   (set-tracing! "VH_ppu" false @routing.routing-rest/management-api)

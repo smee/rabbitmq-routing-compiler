@@ -15,9 +15,6 @@
 (defn user-exchange-write-internal [name]
   (str name "-internal"))
 
-(defn vhost-of [username]
-  (str "VH_" username))
-
 (defn generated-vhost? [vhost]
   (.startsWith vhost "VH_"))
 
@@ -59,7 +56,7 @@ there is no outgoing binding matching the routing key of a message."
 
 (defn construct-admin-declarations 
   "Create ppu vhost, grant all permissions to the management-user for all generated vhosts and the ppu vhost."
-  [{:keys [users]} {:keys [management-user management-password ppu-vhost]}]
+  [{:keys [users]} {:keys [management-user management-password ppu-vhost]} vhost-of]
   (as-flat-set
     {:action :declare 
      :resource :vhost 
@@ -80,11 +77,24 @@ there is no outgoing binding matching the routing key of a message."
        :write ".*" 
        :read ".*"})))
 
+(defn construct-admin-permissions-for-vhosts 
+  "Create ppu vhost, grant all permissions to the management-user for all generated vhosts and the ppu vhost."
+  [{:keys [users]} {:keys [management-user management-password ppu-vhost]} vhost-of]
+  (as-flat-set
+    (for [user (keys users)] ;admin has all rights in user's vhosts
+      {:action :declare 
+       :resource :permission 
+       :vhost (vhost-of user) 
+       :user management-user 
+       :configure ".*" 
+       :write ".*" 
+       :read ".*"})))
+
 (defn construct-routing-key-only 
   "Construct routing that uses only routing keys, no header arguments at all.
 All routing keys have the following structure:
     SENDER_ID.tag.COVENANTCOLLECTION"
-  [{:keys [users covenants collections]} {vhost :ppu-vhost}]
+  [{:keys [users covenants collections]} {vhost :ppu-vhost} vhost-of]
   (as-flat-set 
     (generate-invalid-routing-exchange vhost)
     (for [{user :name ex :exchange} (vals users)] 
@@ -92,7 +102,7 @@ All routing keys have the following structure:
        {:action :declare 
         :resource :exchange 
         :vhost vhost
-        :arguments {:name (user-exchange-write-internal user) 
+        :arguments {:name (user-exchange-write-internal user)  
                     :type "topic" 
                     :internal true 
                     :durable true 
@@ -119,9 +129,9 @@ All routing keys have the following structure:
                     :arguments {}}})])))
 
 ;;;; constructors for private vhost per user
-(defn construct-vhosts 
+(defn construct-user-vhosts 
   "Each user has a private vhost named like the user."
-  [{:keys [users]}]
+  [{:keys [users]} _ vhost-of]
   (as-flat-set 
     (for [user (keys users)]
       {:action :declare 
@@ -130,7 +140,7 @@ All routing keys have the following structure:
 
 (defn construct-users 
   "Every generated user has its name as a password and a tag 'generated'."
-  [{:keys [users]}]
+  [{:keys [users]} _ vhost-of]
   (as-flat-set 
     (for [{user :name pw :password} (vals users)] 
       {:action :declare 
@@ -139,7 +149,7 @@ All routing keys have the following structure:
        :password_hash pw 
        :tags "generated"})))
 
-(defn construct-internal-shovel-user [{:keys [users]} {:keys [shovel-user shovel-password-hash ppu-vhost]}]
+(defn construct-internal-shovel-user [{:keys [users]} {:keys [shovel-user shovel-password-hash ppu-vhost]} vhost-of]
   (as-flat-set 
     {:action :declare 
      :resource :user
@@ -167,7 +177,7 @@ All routing keys have the following structure:
 (defn construct-permissions 
   "Each user only has only read permissions to his queues and write permission to his own exchange.
 Users have no permissions to change anything themselves."
-  [{:keys [users queues]}]
+  [{:keys [users queues]} _ vhost-of]
   (as-flat-set 
     (for [{user :name ex :exchange qs :queues} (vals users)] 
       {:action :declare 
@@ -181,7 +191,7 @@ Users have no permissions to change anything themselves."
 
 (defn construct-private-queue-bindings 
   "Declare queues and bindings according to `allocations`."
-  [{:keys [users covenants]}]
+  [{:keys [users covenants]} _ vhost-of]
   (as-flat-set 
     (for [[user {:keys [queues allocations exchange]}] users 
           :let [vh (vhost-of user)]] 
@@ -206,7 +216,9 @@ Users have no permissions to change anything themselves."
                       :auto_delete false 
                       :arguments {}}})]))) ; TODO x-dead-letter-exchange, see https://www.rabbitmq.com/dlx.html
 
-(defn construct-federations [contracts {:keys [management-user management-password ppu-vhost]}]
+(defn construct-federations 
+  "Federation based alternative of construct-internal-shovels"
+  [contracts {:keys [management-user management-password ppu-vhost]} vhost-of]
   (as-flat-set 
     (for [{user :name ex :exchange} (vals (:users contracts)) 
           :let [vh (vhost-of user)
@@ -252,7 +264,7 @@ Users have no permissions to change anything themselves."
         :pattern (str "^" ex-r "$")}])))
 
 (defn construct-internal-shovels 
-  [contracts {:keys [shovel-user shovel-password ppu-vhost]}]
+  [contracts {:keys [shovel-user shovel-password ppu-vhost]} vhost-of]
   (as-flat-set 
     (for [{user :name ex :exchange} (vals (:users contracts)) 
           :let [vh (vhost-of user)
@@ -325,7 +337,7 @@ Users have no permissions to change anything themselves."
 
 (defn construct-alias-routing
   "Construct routing for all transparent remote users"
-  [{:keys [users covenants collections] :as contracts} {ppu-vhost :ppu-vhost}]
+  [{:keys [users covenants collections] :as contracts} {ppu-vhost :ppu-vhost} vhost-of]
   (as-flat-set 
     (for [{remote-user :name, ex :exchange, queues :queues, {aliases :aliases :as remote} :remote} (vals users), 
           alias-user aliases
@@ -397,7 +409,7 @@ Users have no permissions to change anything themselves."
   "localuser may have convenant with another local user. In this case (assuming they are both
 localusers of the same platform user), we can directly bind from the sender's exchange
 to the allocated queue."
-  [{:keys [users collections covenants]}]  
+  [{:keys [users collections covenants]} _ vhost-of]  
   (let [locals-per-pf-user (map (comp set keys :localusers) (vals users))] 
     (as-flat-set
       (for [[cov-id {:keys [from to tag]}] covenants 
@@ -413,7 +425,10 @@ to the allocated queue."
            :to q 
            :arguments {:routing_key (format "%s.%s.*" from tag) :arguments {}}})))))
 
-(defn construct-localusers [{:keys [users collections covenants]}] 
+(defn construct-localusers 
+  "Construct local users associated with a toplevel platform user. A platform user
+may delegate covenants to its local users."
+  [{:keys [users collections covenants]} _ vhost-of] 
   (as-flat-set
     (for [[pf-user {lu :localusers pf-user-exchange :exchange}] users,
           {:keys [name password exchange queues delegation]} (vals lu),
@@ -460,7 +475,7 @@ to the allocated queue."
 
 (defn construct-delegation-routing 
   "Delegation of covenants between local platform users."
-  [{:keys [users collections covenants] :as contracts} {ppu-vhost :ppu-vhost}]
+  [{:keys [users collections covenants] :as contracts} {ppu-vhost :ppu-vhost} vhost-of]
   (as-flat-set 
     ;; TODO what about the delegating user? he gets all messages, too!
     (for [[user-name {ds :delegation :as user}] users,
@@ -529,7 +544,7 @@ to the allocated queue."
 (defn construct-tracing 
   "Enable tracing in a vhost, construct and add a queue to the amq.rabbitmq.trace exchange.
 Queue keeps messages for 30s, holds max. 100 messages (to avoid making this feature a bottleneck)"
-  [{:keys [users]} {ppu-vhost :ppu-vhost}]
+  [{:keys [users]} {ppu-vhost :ppu-vhost} vhost-of]
   (->> users
     keys
     (map vhost-of)
@@ -543,7 +558,28 @@ Queue keeps messages for 30s, holds max. 100 messages (to avoid making this feat
   "Unroutable messages go via the internal exchange `invalid_routing_key` to a new queue,
 then get shoveled to `invalid_routing_key` in the ppu vhost (with forward headers so we know
 where the message was stuck)."
-  [{:keys [users]} {:keys [ppu-vhost shovel-user shovel-password]}]
+  [_ {:keys [ppu-vhost]} _]
+  (as-flat-set 
+    {:action :declare 
+     :resource :queue
+     :vhost ppu-vhost 
+     :arguments {:name unroutable-queue 
+                 :durable true 
+                 :auto_delete false 
+                 :arguments {:x-message-ttl (* 1000 60 60 24) ;save for max. 24 hours 
+                             :x-max-length 100}}}
+    {:action :bind 
+     :resource :queue 
+     :vhost ppu-vhost
+     :to unroutable-queue 
+     :from invalid_routing_key 
+     :arguments {:routing_key "#" :arguments {}}})) 
+
+(defn construct-unroutable-separate-vhosts 
+  "Unroutable messages go via the internal exchange `invalid_routing_key` to a new queue,
+then get shoveled to `invalid_routing_key` in the ppu vhost (with forward headers so we know
+where the message was stuck)."
+  [{:keys [users] :as contracts} {:keys [ppu-vhost shovel-user shovel-password] :as credentials} vhost-of]
   (as-flat-set 
     (for [user (keys users)
           :let [vhost (vhost-of user)]] 
@@ -553,7 +589,7 @@ where the message was stuck)."
         :arguments {:name unroutable-queue 
                     :durable true 
                     :auto_delete false 
-                    :arguments {:x-message-ttl (* 1000 30) ;save for max. 1 hour 
+                    :arguments {:x-message-ttl (* 1000 30) ;save for max. 30s 
                                 :x-max-length 100}}};at most save the last 100 messages
        {:action :bind 
         :resource :queue 
@@ -572,19 +608,6 @@ where the message was stuck)."
         :prefetch-count 100
         :reconnect-delay 1
         :add-forward-headers true 
-        :ack-mode "on-publish"}])
+        :ack-mode "on-publish"}]) 
     ; add queue for all non-routable messages in vhost `ppu-vhost`
-    {:action :declare 
-     :resource :queue
-     :vhost ppu-vhost 
-     :arguments {:name unroutable-queue 
-                 :durable true 
-                 :auto_delete false 
-                 :arguments {:x-message-ttl (* 1000 60 60 24) ;save for max. 24 hours 
-                             :x-max-length 100}}}
-    {:action :bind 
-     :resource :queue 
-     :vhost ppu-vhost
-     :to unroutable-queue 
-     :from invalid_routing_key 
-     :arguments {:routing_key "#" :arguments {}}})) 
+    (construct-unroutable contracts credentials vhost-of)))

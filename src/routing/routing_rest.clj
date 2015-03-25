@@ -44,7 +44,8 @@
                (when true;(not= old new) 
                  (generator/update-routing! 
                    #_new @con/contracts 
-                   @management-api)))))
+                   @management-api
+                   generator/create-all-separate-vhosts)))))
 ;;;; helpers
 (defn build-entry-url [{:keys [scheme server-name server-port uri]} nested? & ids] 
   (let [path (join "/" (map str ids))
@@ -73,7 +74,7 @@
                                     (mapcat #(concat (routing.generator.io/fetch-routing % creds :incl-federation? with-federation?)
                                                      (routing.generator.io/fetch-shovels % creds)) vhosts)
                                     (mapcat #(map (fn [decl] (assoc decl :host (select-keys (meta %) [:name :aliases]))) 
-                                                  (generator/create-all % 
+                                                  (generator/create-all-single-vhost % 
                                                                                         (-> creds
                                                                                           (merge (meta %))
                                                                                           (select-keys (keys io/+Credentials+)))))
