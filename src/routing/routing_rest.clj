@@ -61,13 +61,14 @@ routing.routing-rest
 
 (defn- post? [r] (= :post (get-in r [:request :request-method])))
 
-(defresource rendering-resource [vhost {:keys [with-ae? 
-                                               with-shovels?
-                                               with-federation?
-                                               start-vhost 
-                                               start-exchange 
-                                               routing-key
-                                               strategy]}]
+(defresource rendering-resource 
+  [vhost {:keys [with-ae? 
+                 with-shovels?
+                 with-federation?
+                 start-vhost 
+                 start-exchange 
+                 routing-key
+                 strategy]}]
   :allowed-methods [:get]
   :available-media-types ["image/png"]
   :handle-ok (fn [ctx] 
@@ -75,14 +76,17 @@ routing.routing-rest
                      creds @management-api
                      vhosts (if (string? vhost) [vhost] vhost)
                      declarations (if (not-empty vhosts) 
-                                    (mapcat #(concat (routing.generator.io/fetch-routing % creds :incl-federation? with-federation?)
-                                                     (routing.generator.io/fetch-shovels % creds)) vhosts)
+                                    (mapcat #(concat (io/fetch-routing % creds :incl-federation? with-federation?)
+                                                     (io/fetch-shovels % creds)) vhosts)
                                     (mapcat #(map (fn [decl] (assoc decl :host (select-keys (meta %) [:name :aliases]))) 
-                                                  (generator-fn % 
-                                                                (-> creds
+                                                  (generator-fn % creds
+                                                                #_(-> creds
                                                                   (merge (meta %))
                                                                   (select-keys (keys +Credentials+)))))
-                                            [@con/contracts]))]
+                                            [@con/contracts
+                                             ;con/remote-contracts
+                                             ;con/demo-delegation
+                                             ]))]
                  (-> declarations
                    (viz/routing->graph :with-ae? with-ae? :with-shovels? with-shovels?
                                        :start-vhost start-vhost :start-exchange start-exchange 
@@ -142,7 +146,7 @@ routing.routing-rest
                     [(su/error? data) {::data data}]))) 
   :handle-malformed #(do (info "was called") 
                        (pr-str (:error (::data %)))) 
-  :post! #(reset! con/contracts (::data %))
+  :post! #(con/replace-contracts! (::data %))
   :handle-ok (fn [_] (minus->underscore @con/contracts))) 
 
 #_(def dbg-handler (fn [handler]

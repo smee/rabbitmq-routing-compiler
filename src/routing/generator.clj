@@ -80,7 +80,7 @@ routing.generator
   "Create all declarations for elements in a rabbitmq instance given the contracts data structure 
 and the credentials."
   [contracts :- +Contracts+
-   credentials :- +Credentials+]
+   credentials :- +Credentials+] 
   (apply as-flat-set
          ((juxt gen/construct-users
                 gen/construct-user-vhosts

@@ -172,7 +172,7 @@ All routing keys have the following structure:
 
 (deffeature construct-internal-shovel-user
   "TODO"
-  [{:keys [users]} {:keys [shovel ppu-vhost]} vhost-of]
+  [{:keys [users]} {:keys [shovel ppu-vhost]} vhost-of] 
   {:action :declare 
    :resource :user
    :name (shovel :user) 
@@ -358,18 +358,19 @@ Users have no permissions to change anything themselves."
 (deffeature construct-alias-routing
   "Construct routing for all transparent remote users"
   [{:keys [users covenants collections] :as contracts} {ppu-vhost :ppu-vhost} vhost-of]
-  (for [{remote-user :name, ex :exchange, queues :queues, {aliases :aliases :as remote} :remote} (vals users), 
+  (for [{remote-user :name, ex :exchange, queues :queues, local-pw :password, {aliases :aliases :as remote} :remote} (vals users), 
         alias-user aliases
         :when alias-user
-        :let [vhost (vhost-of remote-user)]] 
+        :let [vhost (vhost-of remote-user)
+              local-uri (format "amqp://%s:%s@/%s" remote-user local-pw vhost)]] 
     [; shovel TO the remote rabbitmq
      {:resource :shovel
       :action :declare
       :vhost vhost
       :name (str vhost "-> remote" )
-      :src-uri (:local-uri remote) ;we NEED valid user credentials for the local mom, too!
+      :src-uri local-uri
       :src-queue (first queues);; FIXME are we sure there is just one? 
-      :dest-uri (:uri remote) 
+      :dest-uri (:remote-uri remote) 
       :dest-exchange (:exchange remote) 
       :prefetch-count 100
       :reconnect-delay 1
@@ -380,9 +381,9 @@ Users have no permissions to change anything themselves."
       :action :declare
       :vhost vhost
       :name (str  "remote ->" vhost)
-      :src-uri (:uri remote)
+      :src-uri (:remote-uri remote)
       :src-queue (:queue remote) 
-      :dest-uri (:local-uri remote) ;we NEED valid user credentials for the local mom, too!  
+      :dest-uri local-uri   
       :dest-exchange ex 
       :prefetch-count 100
       :reconnect-delay 1
@@ -493,7 +494,6 @@ may delegate covenants to its local users."
 (deffeature construct-delegation-routing 
   "Delegation of covenants between local platform users."
   [{:keys [users collections covenants] :as contracts} {ppu-vhost :ppu-vhost} vhost-of]
-  ;; TODO what about the delegating user? he gets all messages, too!
   (for [[user-name {ds :delegation :as user}] users,
         [delegating-user cov-ids] ds,
         cov-id cov-ids
@@ -517,6 +517,7 @@ may delegate covenants to its local users."
        (for [[cc-name cov-coll] collections 
              :when (contains? cov-coll cov-id)
              :let [from' (user-alias contracts from)]] 
+         ; TODO clean this up: dependencies between features
          ; if this is a proxy user, we don't know which covenant collection might have been used
          ; but since we got the message, we are the recipient. No need to restrict it further
          (if (not= from from') ;remote user
