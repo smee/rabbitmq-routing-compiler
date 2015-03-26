@@ -4,53 +4,10 @@
              [seq :refer [find-where]]]
             [clojure.set :refer [difference]]
             [schema.core :as s]
-            [schema.macros :as m] 
+            [routing.schemas :refer :all]
             [routing.generator.rabbit-password :refer [rabbit-password-hash]]))
 
-;;;;;;;;;;;;;; Schema Definitions ;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def +UserName+ s/Str)
-(def +CovenantId+ s/Str)
-(def +CovenantCollectionId+ s/Str)
-
-(def +Queues+ #{s/Str})
-
-(def +Allocations+ {s/Str #{s/Str}})
-
-(def +LocalUser+ {:name +UserName+
-                  :password s/Str
-                  :queues +Queues+
-                  :exchange s/Str
-                  :delegation #{+CovenantId+}})
-
-
-(def +PlatformUser+ {:name +UserName+
-                     :password s/Str
-                     :queues +Queues+
-                     :exchange s/Str
-                     :allocations +Allocations+
-                     ;a user may represent manalysistiple upstream users (à la transparent proxy)
-                     (s/optional-key :remote) {:aliases #{+UserName+}
-                                               :uri s/Str
-                                               :local-uri s/Str
-                                               :exchange s/Str
-                                               :queue s/Str} 
-                     (s/optional-key :localusers) {+UserName+ +LocalUser+}
-                     (s/optional-key :delegation) {+UserName+ #{+CovenantId+}}}) 
-
-(def +Covenant+ {:from s/Str
-                 :to s/Str
-                 :tag s/Str})
-
-
-(def +Contracts+ {:users {+UserName+ +PlatformUser+}
-                  :covenants {+CovenantId+ +Covenant+}
-                  :collections {+CovenantCollectionId+ #{+CovenantId+}}})
-
-
-(def empty-contracts {:users {}
-                      :covenants {}
-                      :collections {}})
 
 (defn pw [s]
   (rabbit-password-hash s (byte-array (map byte [1 2 3 4]))))
@@ -116,6 +73,9 @@
                        "ALL" #{"1" "2" "3" "5" "6" "7" "10"}
                        "just-data" #{"1" "2" "3" "5" "6" "7" "10"}}}))
 
+(def empty-contracts {:users {}
+                      :covenants {}
+                      :collections {}})
 
 (def merge-contracts (partial org.clojars.smee.map/deep-merge-with into))
 
@@ -169,17 +129,21 @@ it can only be validated against
 
 ;;;;;;;;;;;;;;;; contract related public API ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(m/defn add-user! [{n :name :as user} :- +PlatformUser+]
+(s/defn add-user! 
+  [{n :name :as user} :- +PlatformUser+]
   (swap! contracts assoc n user))
 
 
-(defn covenant-ids-where-sender [contracts user]
+(defn covenant-ids-where-sender 
+  [contracts user]
   (set (keep (fn [[id {f :from}]] (when (= user f) id)) (:covenants contracts))))
 
-(defn covenant-ids-of [contracts user] 
+(defn covenant-ids-of 
+  [contracts user] 
   (set (keep (fn [[id {f :from t :to}]] (when (or (= user f) (= user t)) id)) (:covenants contracts))))
 
-(defn- delete-user-internal [contract user]
+(defn- delete-user-internal 
+  [contract user]
   (let [cov-ids (covenant-ids-of contract user)]
     (-> contract
       (update-in [:users] dissoc user)
@@ -187,21 +151,23 @@ it can only be validated against
       (update-in [:covenants] (partial reduce-kv (fn [m k v] (if (cov-ids k) m (assoc m k v))) {})))))
 
 
-(defn delete-user! [user]
+(defn delete-user! 
+  [user]
   (swap! contracts delete-user-internal user))
 
 
-(m/defn add-covenant-collection! 
+(s/defn add-covenant-collection! 
   [id :- +CovenantCollectionId+ 
    coll :- #{+CovenantId+}]
   (swap! contracts assoc-in [:collections id] coll))
 
 
-(defn delete-covenant-collection! [id]
+(defn delete-covenant-collection! 
+  [id]
   (swap! contracts update-in [:collections] dissoc id))
 
 
-(m/defn add-covenant! :- +Contracts+ 
+(s/defn add-covenant! :- +Contracts+ 
   [cov :- +Covenant+]
   (swap! contracts assoc-in [:covenants (str (java.util.UUID/randomUUID))] cov)) 
 
@@ -215,7 +181,7 @@ it can only be validated against
   (swap! contracts delete-covenant-internal id))
 
 
-(m/defn reset-allocations! :- +Contracts+ 
+(s/defn reset-allocations! :- +Contracts+ 
   [user :- s/Str
    allocations :- +Allocations+]
   (swap! contracts assoc-in [:allocations user] allocations))

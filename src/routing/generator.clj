@@ -1,12 +1,16 @@
-(ns routing.generator
-  (:require [routing.generator.routingkey :as gen]
-            [routing.generator.rabbit-password :refer [rabbit-password-hash]] 
-            [routing.generator.io :as io :refer [with-credentials]]
-            [routing.generator.common :refer [as-flat-set]]
+(ns ^{:doc "Configuration logic for RabbitMQ. This is where the magic happens."}
+routing.generator
+  (:require [routing.schemas :refer [+Credentials+ +Contracts+]]
+            [routing.generator
+             [common :refer [as-flat-set]]
+             [features :as gen]
+             [io :as io :refer [with-credentials]]
+             [rabbit-password :refer [rabbit-password-hash]]]
             [clojure.set :refer [difference]]
             [clojure.tools.logging :as log :refer [info infof debugf debug]]
-            [schema.macros :as s])
-  (:import java.net.URLEncoder))
+            [schema.core :as s])
+  (:import java.net.URLEncoder
+           clojure.lang.IFn))
 
 ;; FIXME just sorting is not enough:
 ;; - deleting a user deletes its permissions
@@ -53,14 +57,17 @@
 
 (s/defn fetch-all 
   "Fetch all existing structures from a RabbitMQ instance in parallel."
-  [creds :- io/+Credentials+]
-  (let [vhosts (io/fetch-vhosts creds)]
+  [creds :- +Credentials+]
+  (let [vhosts (io/fetch-vhosts creds)
+        users (io/fetch-users creds)
+        user-perms (io/fetch-permissions creds)
+        admin-perms (io/fetch-admin-permissions creds)]
     (as-flat-set
       (pvalues
         vhosts
-        (io/fetch-users creds)
-        (io/fetch-permissions creds)
-        (io/fetch-admin-permissions creds))
+        users
+        user-perms
+        admin-perms)
       (pmap (fn [vh]
               (pvalues (io/fetch-routing vh creds) 
                        (io/fetch-federations vh creds)
@@ -72,8 +79,8 @@
 (s/defn create-all-separate-vhosts
   "Create all declarations for elements in a rabbitmq instance given the contracts data structure 
 and the credentials."
-  [contracts :- routing.contracts/+Contracts+
-   credentials :- io/+Credentials+]
+  [contracts :- +Contracts+
+   credentials :- +Credentials+]
   (apply as-flat-set
          ((juxt gen/construct-users
                 gen/construct-user-vhosts
@@ -95,8 +102,8 @@ and the credentials."
 (s/defn create-all-single-vhost
   "Create all declarations for elements in a rabbitmq instance given the contracts data structure 
 and the credentials."
-  [contracts :- routing.contracts/+Contracts+
-   credentials :- io/+Credentials+]
+  [contracts :- +Contracts+
+   credentials :- +Credentials+]
   (as-flat-set
     ((juxt gen/construct-users
            gen/construct-permissions
@@ -111,12 +118,16 @@ and the credentials."
            gen/construct-unroutable)
       contracts credentials (constantly (:ppu-vhost credentials)))))
 
+(defn get-generator-fn [key] 
+  (get {:single create-all-single-vhost
+        :separate create-all-separate-vhosts} (or key :single)))
+
 (s/defn update-routing! 
   "Synchronize declarations derived from `contracts` and `credentials` with the configuration
 currently present within a rabbitmq instance." 
-  [contracts :- routing.contracts/+Contracts+ 
-   credentials :- io/+Credentials+
-   routing-constructor-fn]
+  [contracts :- +Contracts+ 
+   credentials :- +Credentials+
+   routing-constructor-fn :- IFn]
   (with-credentials credentials 
     (let [decls (sort-by identity declaration-comparator (routing-constructor-fn contracts credentials))
           existing (sort-by identity declaration-comparator (fetch-all credentials)) 
@@ -136,9 +147,12 @@ currently present within a rabbitmq instance."
                 :let [vh (:vhost decl)]]
           (debug "adding" decl) 
           (io/apply-declaration! vh decl))))))
+ 
 
-(defn set-tracing! [vhost enabled? settings]
-  (with-credentials settings
+(defn set-tracing! 
+  "Enable tracing for an individual vhost. Refer to http://www.rabbitmq.com/firehose.html"
+  [vhost enabled? credentials]
+  (with-credentials credentials
     (if enabled? 
       (io/apply-declaration! vhost {:resource :tracing :action :declare})
       (io/remove-declaration! vhost {:resource :tracing :action :declare}))))
@@ -148,13 +162,15 @@ currently present within a rabbitmq instance."
           @routing.contracts/contracts
           ;routing.contracts/empty-contracts
           @routing.routing-rest/management-api
-          create-all-separate-vhosts))
+          ;create-all-separate-vhosts
+          create-all-single-vhost
+          ))
 
   
   ; create all remote configurations for the demonstrator
   (doseq [config [@routing.contracts/contracts]
           :let [settings (merge @routing.routing-rest/management-api (meta config))
-                config-name (or (:name settings) (:management-url settings))]]
+                config-name (or (:name settings) (-> settings :management :url))]]
     (info "configuring" config-name)
     (update-routing! config settings routing-constructor-fn))
   

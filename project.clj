@@ -4,8 +4,10 @@
   :url "http://example.com/FIXME"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-  :dependencies [[org.clojure/clojure "1.6.0"]
-                 [com.novemberain/langohr "3.0.1"]
+  :dependencies [[org.clojure/clojure "1.7.0-alpha5"]
+                 [com.novemberain/langohr "3.1.0"
+                  :exclude [clj-http]] ; langohr relies on a clj-http version that is not compatible with clojure 1.7
+                 [clj-http "1.1.0"] ; compatible with clojure 1.7
                  [clojurewerkz/urly "1.0.0"]
                  [org.clojure/tools.logging "0.3.1"]
                  [org.slf4j/slf4j-simple "1.7.10"]
@@ -16,7 +18,7 @@
                  [liberator "0.12.2"] ;rest
                  [cheshire "5.4.0"] ;json
                  [ring/ring-json-patch "0.2.0"] ;wrap-json-params, local version with applied patch from pull request 11: enable on-error callback for malformed json
-                 [prismatic/schema "0.3.7"] ;data schema description and coercion
+                 [prismatic/schema "0.4.0"] ;data schema description and coercion
                  [rhizome "0.2.1"] ;dot visualization
                  ]
   :profiles {:dev {:dependencies [[spyscope "0.1.5"]]}

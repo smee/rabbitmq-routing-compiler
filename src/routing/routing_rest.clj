@@ -1,10 +1,11 @@
-(ns routing.routing-rest
+(ns ^{:doc "REST interfaces to configure this tools as well as see current status as JSON or static visualization."}
+routing.routing-rest
   (:require [clojure.string :refer [join]]
             [clojure.data.json :refer [write-str]]
             [clojure.tools.logging :as log :refer [info error]]
-            [routing.generator.routingkey :as gen]
-            [routing.generator :as generator] 
+            [routing.schemas :refer [+Contracts+ +Credentials+]] 
             [routing.contracts :as con]
+            [routing.generator :as generator] 
             [routing.generator.io :as io]
             [routing.generator.viz :as viz]
             [ring.adapter.jetty :as jetty] 
@@ -26,14 +27,15 @@
              [utils :as su]] 
             )
   (:gen-class))
-(defonce management-api (atom {:management-url (format "http://%s:%s" 
-                                                       (get (System/getenv) "RABBITMQ_PORT_15672_TCP_ADDR" "127.0.0.1")
-                                                       (get (System/getenv) "RABBITMQ_PORT_15672_TCP_PORT" "15672"))
-                               :management-user (get (System/getenv) "user" "guest")
-                               :shovel-user (get (System/getenv) "shovel_user" "shovel")
-                               :shovel-password (get (System/getenv) "shovel_password" "shovel")
-                               :shovel-password-hash (get (System/getenv) "shovel_password_hash" "1iKHKKKMGQS2fF6CRN/S7y5wg9M=")
-                               :management-password (get (System/getenv) "password" "guest")
+(defonce management-api (atom {:management {:user (get (System/getenv) "user" "guest")
+                                            :password (get (System/getenv) "password" "guest")
+                                            :url (format "http://%s:%s" 
+                                                         (get (System/getenv) "RABBITMQ_PORT_15672_TCP_ADDR" "127.0.0.1")
+                                                         (get (System/getenv) "RABBITMQ_PORT_15672_TCP_PORT" "15672"))} 
+                               :shovel {:user (get (System/getenv) "shovel_user" "shovel")
+                                        :password (get (System/getenv) "shovel_password" "shovel")
+                                        :password-hash (get (System/getenv) "shovel_password_hash" "1iKHKKKMGQS2fF6CRN/S7y5wg9M=")} 
+                               
                                :ppu-vhost (get (System/getenv) "ppu-vhost" "VH_ppu")})) 
 
 ; map collections, tags etc. to rabbitmq resources on every change
@@ -64,20 +66,22 @@
                                                with-federation?
                                                start-vhost 
                                                start-exchange 
-                                               routing-key]}]
+                                               routing-key
+                                               strategy]}]
   :allowed-methods [:get]
   :available-media-types ["image/png"]
   :handle-ok (fn [ctx] 
-               (let [creds @management-api
+               (let [generator-fn (generator/get-generator-fn strategy)
+                     creds @management-api
                      vhosts (if (string? vhost) [vhost] vhost)
                      declarations (if (not-empty vhosts) 
                                     (mapcat #(concat (routing.generator.io/fetch-routing % creds :incl-federation? with-federation?)
                                                      (routing.generator.io/fetch-shovels % creds)) vhosts)
                                     (mapcat #(map (fn [decl] (assoc decl :host (select-keys (meta %) [:name :aliases]))) 
-                                                  (generator/create-all-single-vhost % 
-                                                                                        (-> creds
-                                                                                          (merge (meta %))
-                                                                                          (select-keys (keys io/+Credentials+)))))
+                                                  (generator-fn % 
+                                                                (-> creds
+                                                                  (merge (meta %))
+                                                                  (select-keys (keys +Credentials+)))))
                                             [@con/contracts]))]
                  (-> declarations
                    (viz/routing->graph :with-ae? with-ae? :with-shovels? with-shovels?
@@ -111,16 +115,18 @@
           (= s/Str schema) (sc/safe name)
           (set? schema) set)))
 
-(def contracts-json-to-clj (sc/coercer con/+Contracts+ json-coercion-matcher))
+(def contracts-json-to-clj (sc/coercer +Contracts+ json-coercion-matcher))
+(def management-json-to-clj (sc/coercer +Credentials+ json-coercion-matcher))
 
 (defresource management-api-resource
   :available-media-types ["application/json"]
   :allowed-methods [:post :get]
   :malformed? (fn [r] ;(clojure.pprint/pprint r)
                (when (post? r)
-                 (let [credentials (underscore->minus (get-in r [:request :params]))] 
-                   [(not (= #{:management-url :management-user :management-password :ppu-vhost}
-                            (set (keys credentials)))) 
+                 (let [credentials (->> (get-in r [:request :params])
+                                     underscore->minus
+                                     management-json-to-clj)] 
+                   [(su/error? credentials) 
                     {::data credentials}])))
   :post! #(reset! management-api (::data %))
   :handle-ok (fn [_] (minus->underscore @management-api)))
@@ -132,7 +138,6 @@
   :malformed? (fn [r]
                 (when (post? r)
                   (let [contracts (underscore->minus (get-in r [:request :params]))
-                        _ (def contracts contracts)
                         data (contracts-json-to-clj contracts)]
                     [(su/error? data) {::data data}]))) 
   :handle-malformed #(do (info "was called") 
@@ -155,14 +160,15 @@
                                           (build-entry-url (:request %) true "routing.png"))))
       (ANY "/management" [] management-api-resource)
       (ANY "/all" [] everything) 
-      (GET "/routing.png" [ae fed shovels vhost start-vhost start-exchange routing-key] 
+      (GET "/routing.png" [ae fed shovels vhost start-vhost start-exchange routing-key strategy] 
            (rendering-resource vhost 
                                {:with-ae? (Boolean/parseBoolean ae) 
-                               :with-shovels? (Boolean/parseBoolean shovels)
-                               :with-federation? (Boolean/parseBoolean fed)
-                               :start-vhost start-vhost
-                               :start-exchange start-exchange
-                               :routing-key routing-key})))
+                                :with-shovels? (Boolean/parseBoolean shovels)
+                                :with-federation? (Boolean/parseBoolean fed)
+                                :start-vhost start-vhost
+                                :start-exchange start-exchange
+                                :routing-key routing-key
+                                :strategy (keyword strategy)})))
     wrap-keyword-params
     (wrap-json-params {:on-error (fn [handler req ex] (error ex) (.printStackTrace ex) {:status 400 :body "Malformed JSON."})})
     wrap-params

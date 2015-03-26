@@ -1,4 +1,5 @@
-(ns ^{:doc "render current routing structures"} routing.generator.viz
+(ns ^{:doc "render current routing structures"} 
+routing.generator.viz
   (:require [clojure.java.shell :as sh]
             [org.clojars.smee.seq :refer [find-where distinct-by]]
             [rhizome.viz :refer [view-graph]]

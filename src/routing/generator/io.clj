@@ -1,13 +1,15 @@
 (ns routing.generator.io
   (:require [langohr.http :as lh]
             [org.clojars.smee.map :refer [map-values]]
-            [routing.contracts :as con]
-            [routing.generator.routingkey :as gen] 
-            [routing.generator.common :refer [as-flat-set]] 
+            [routing.schemas :as schemas]
+            [routing.generator
+             [common :refer [as-flat-set]]
+             [features :as gen]]               
             [clojure.set :refer [difference]]
-            [clojure.tools.logging :as log :refer [info infof warnf debug]]
-            [schema.core :as s])
+            [clojure.tools.logging :as log :refer [info infof warnf debug]])
   (:import java.net.URLEncoder))
+
+
 (defn ^:private http-method [langohr-delegation-fn]
   (fn 
     ([url] 
@@ -30,25 +32,12 @@
 (defn- url [url-template & params] 
   (apply format url-template (map #(URLEncoder/encode %) params)))
 
-(def +Credentials+ 
-  "Schema for credentials for rabbitmq's management api and other credentials.
-- `:name` is the main name of this credentials set/the host this gets applied to
-- `:aliases` may be aliases for `name`" 
-  {:ppu-vhost s/Str
-   :management-user s/Str
-   :management-password s/Str
-   :management-url s/Str
-   :shovel-user s/Str
-   :shovel-password s/Str
-   :shovel-password-hash s/Str
-   (s/optional-key :name) s/Str
-   (s/optional-key :aliases) [s/Str]})
 
 (defmacro with-credentials [creds & body]
   `(let [creds# ~creds]
-     (binding [lh/*endpoint* (:management-url creds#) 
-               lh/*username* (:management-user creds#) 
-               lh/*password* (:management-password creds#)]
+     (binding [lh/*endpoint* (-> creds# :management :url ) 
+               lh/*username* (-> creds# :management :user) 
+               lh/*password* (-> creds# :management :password)]
        ~@body))) 
 
 (defn fetch-routing 
@@ -185,9 +174,10 @@ used by `construct-routing`."
   [creds]
   (with-credentials creds
     (as-flat-set
-      (let [admin-users #{(:shovel-user creds) (:management-user creds)}
+      (let [admin-users #{(-> creds :shovel :shovel-user) (-> creds :management :user)}
             admin-permissions (filter #(and (gen/generated-vhost? (:vhost %)) 
-                                            (admin-users (:user %))) (lh/list-permissions))]
+                                            (admin-users (:user %))) 
+                                      (lh/list-permissions))]
         (for [{:keys [vhost configure read write user]} admin-permissions]
           {:action :declare
            :resource :permission
