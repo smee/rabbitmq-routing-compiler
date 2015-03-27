@@ -32,7 +32,6 @@ The returned value is a set of all distinct maps of the `body`."
 
 (def ^:const invalid_routing_key "admin.unroutable.exchange")
 
-
 (defn user-exchange-read [name]
   (str name "-ex-read"))
 
@@ -69,11 +68,20 @@ there is no outgoing binding matching the routing key of a message."
                 :auto_delete false 
                 :arguments {:alternate-exchange invalid_routing_key}}}
    {:action :declare 
+      :resource :exchange 
+      :vhost vhost
+      :arguments {:name (user-exchange-write-internal user)  
+                  :type "topic" 
+                  :internal true 
+                  :durable true 
+                  :auto_delete false 
+                  :arguments {:alternate-exchange invalid_routing_key}}}
+   {:action :declare 
     :resource :exchange 
     :vhost vhost
     :arguments {:name (user-exchange-read user) 
                 :type "topic" 
-                :internal false 
+                :internal true 
                 :durable true 
                 :auto_delete false 
                 :arguments {:alternate-exchange invalid_routing_key}}}])
@@ -122,15 +130,6 @@ All routing keys have the following structure:
   (generate-invalid-routing-exchange vhost)
   (for [{user :name ex :exchange} (vals users)] 
     [(generate-private-resources-for user ex vhost)
-     {:action :declare 
-      :resource :exchange 
-      :vhost vhost
-      :arguments {:name (user-exchange-write-internal user)  
-                  :type "topic" 
-                  :internal true 
-                  :durable true 
-                  :auto_delete false 
-                  :arguments {:alternate-exchange invalid_routing_key}}}
      {:action :bind 
       :resource :exchange 
       :vhost vhost
