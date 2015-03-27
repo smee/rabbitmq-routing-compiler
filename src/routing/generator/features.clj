@@ -626,3 +626,13 @@ where the message was stuck)."
       :ack-mode "on-publish"}]) 
   ; add queue for all non-routable messages in vhost `ppu-vhost`
   (construct-unroutable contracts credentials vhost-of))
+
+(deffeature construct-high-availability-for-queues
+  "Ensure that all queues get replicated to all cluster nodes"
+  [_ {vh :ppu-vhost} _]
+  {:action :declare
+   :resource :policy
+   :name "ha-all-queues"
+   :vhost vh
+   :pattern ""
+   :definition {"ha-mode" "all"}})

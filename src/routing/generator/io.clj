@@ -106,6 +106,20 @@ used by `construct-routing`."
          :upstream us
          :exchange ex}))))
 
+(defn fetch-policies
+  [vhost creds]
+  (with-credentials creds
+    (as-flat-set
+      (for [{n :name vh :vhost p :pattern d :definition} 
+            (GET (url "/api/policies/%s" vhost))]
+        {:action :declare
+         :resource :policy
+         :name n
+         :vhost vh
+         :pattern p
+         :definition d}))))
+
+
 (def ^:private shovel-keys [:src-uri :src-queue :dest-uri :dest-exchange :prefetch-count :reconnect-delay :add-forward-headers :ack-mode])
 
 (defn fetch-shovels
@@ -236,6 +250,11 @@ used by `construct-routing`."
                       :definition {:federation-upstream-set federation-upstream-set} 
                       :priority 0}))
 
+(defmethod apply-declaration! [:policy :declare] [_ {:keys [vhost pattern name definition]}]
+  (lh/declare-policy vhost name
+                     {:pattern pattern
+                      :definition definition})) 
+
 (defmethod apply-declaration! [:shovel :declare] [vhost {n :name :as params}]
   (let [value (select-keys params shovel-keys)] 
     (PUT (url "/api/parameters/shovel/%s/%s" vhost n) 
@@ -293,6 +312,9 @@ used by `construct-routing`."
 
 (defmethod remove-declaration! [:federation-policy :declare] [_ {:keys [vhost name]}]
   (DELETE (url "/api/policies/%s/%s" vhost name)))
+
+(defmethod remove-declaration! [:policy :declare] [_ {:keys [vhost name]}]
+  (DELETE (url "/api/policies/%s/%s" vhost name))) 
 
 (defmethod remove-declaration! [:shovel :declare] [vhost {n :name}] 
   (DELETE (url "/api/parameters/shovel/%s/%s" vhost n)))

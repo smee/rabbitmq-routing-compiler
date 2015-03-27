@@ -24,11 +24,12 @@ routing.generator
                :permission 2
                :exchange 3
                :queue 4
-               :federation-policy 5
-               :federation-upstream 6
-               :federation-upstream-set 7
-               :shovel 8
-               :tracing 9}]
+               :policy 5
+               :federation-policy 6
+               :federation-upstream 7
+               :federation-upstream-set 8
+               :shovel 9
+               :tracing 10}]
     (order (:resource m))))
 
 (defn declaration-comparator 
@@ -58,20 +59,18 @@ routing.generator
 (s/defn fetch-all 
   "Fetch all existing structures from a RabbitMQ instance in parallel."
   [creds :- +Credentials+]
-  (let [vhosts (io/fetch-vhosts creds)
-        users (io/fetch-users creds)
-        user-perms (io/fetch-permissions creds)
-        admin-perms (io/fetch-admin-permissions creds)]
+  (let [vhosts (io/fetch-vhosts creds)] 
     (as-flat-set
       (pvalues
         vhosts
-        users
-        user-perms
-        admin-perms)
+        (io/fetch-users creds)
+        (io/fetch-permissions creds)
+        (io/fetch-admin-permissions creds))
       (pmap (fn [vh]
               (pvalues (io/fetch-routing vh creds) 
                        (io/fetch-federations vh creds)
                        (io/fetch-shovels vh creds)
+                       (io/fetch-policies vh creds) 
                        (io/fetch-federations vh creds)
                        (io/fetch-tracing-settings vh creds)))
             (map :name vhosts)))))
@@ -96,7 +95,8 @@ and the credentials."
                 gen/construct-tracing
                 gen/construct-unroutable 
                 gen/construct-internal-shovel-user
-                gen/construct-internal-shovels) 
+                gen/construct-internal-shovels
+                gen/construct-high-availability-for-queues) 
            contracts credentials (partial str "VH_"))))
 
 (s/defn create-all-single-vhost
@@ -115,7 +115,8 @@ and the credentials."
            gen/construct-alias-routing 
            gen/construct-delegation-routing
            gen/construct-tracing
-           gen/construct-unroutable)
+           gen/construct-unroutable
+           gen/construct-high-availability-for-queues)
       contracts credentials (constantly (:ppu-vhost credentials)))))
 
 (defn get-generator-fn [key] 
