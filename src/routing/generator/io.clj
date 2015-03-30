@@ -1,7 +1,6 @@
 (ns routing.generator.io
   (:require [langohr.http :as lh]
             [org.clojars.smee.map :refer [map-values]]
-            [routing.schemas :as schemas]
             [routing.generator
              [common :refer [as-flat-set]]
              [features :as gen]]               
@@ -17,7 +16,7 @@
     ([url body] 
       (langohr-delegation-fn (lh/url-with-path url) {:body body}))))
 
-
+;; TODO needs to be more robust for production, need to inform callers about errors!
 (def ^:private GET (http-method (fn [url body]
                                   (let [{:keys [body status] :as response} (#'lh/get url body)]
                                     (if (<= 200 status 299)
@@ -250,10 +249,11 @@ used by `construct-routing`."
                       :definition {:federation-upstream-set federation-upstream-set} 
                       :priority 0}))
 
-(defmethod apply-declaration! [:policy :declare] [_ {:keys [vhost pattern name definition]}]
+(defmethod apply-declaration! [:policy :declare] [_ {:keys [vhost pattern name definition policy] :or {policy 0}}]
   (lh/declare-policy vhost name
                      {:pattern pattern
-                      :definition definition})) 
+                      :definition definition
+                      :policy policy})) 
 
 (defmethod apply-declaration! [:shovel :declare] [vhost {n :name :as params}]
   (let [value (select-keys params shovel-keys)] 
@@ -321,3 +321,30 @@ used by `construct-routing`."
 
 (defmethod remove-declaration! [:tracing :declare] [vhost _]
   (PUT (url "/api/vhosts/%s" vhost) {:tracing false}))
+
+;;;;;;;;;;;;;;;;; misc. functions for individual settings etc. ;;;;;;;;;;;;;;;;;
+(defn move-queue-master!
+  "Move the master of a mirrored queue by temporarily applying a policy that
+states just to use cluster nodes BUT the current master.
+Keep in mind that all other nodes loose their synchronization with the new master!"
+  [credentials vhost queue-name new-master]
+  ;; TODO refer to https://groups.google.com/d/msg/rabbitmq-users/bJNcrDVhWiU/6oMO0DjNQ4oJ
+  (let [policy-name (str "change-queue-master-" (java.util.UUID/randomUUID))
+        policy {:action :declare
+                :resource :policy
+                :name policy-name
+                :vhost vhost
+                :pattern (format "^%s$" queue-name)
+                :definition {"ha-mode" "nodes" 
+                             "ha-params" [new-master]}
+                :priority 100}] 
+    (with-credentials credentials
+      (infof "Temporarily force cluster to only respect node %s as master for queue %s, no slaves" new-master queue-name)
+      (apply-declaration! vhost policy)
+      (Thread/sleep 2000)
+      (infof "Resetting policies for queue %s" queue-name)
+      (remove-declaration! vhost policy)
+      (Thread/sleep 1000)
+      (binding [lh/*default-http-options* (dissoc lh/*default-http-options* :accept)] 
+        ;FIXME langohr explicitely states it only accepts json as reponse. This doesn't work with calls to action, I get reponse code 406
+        (POST (url "/api/queues/%s/%s/actions" vhost queue-name) {:action "sync"})))))
