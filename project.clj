@@ -10,19 +10,17 @@
                  [clj-http "1.1.0"] ; compatible with clojure 1.7
                  [clojurewerkz/urly "1.0.0"]
                  [org.clojure/tools.logging "0.3.1"]
-                 [org.slf4j/slf4j-simple "1.7.10"]
+                 [org.slf4j/slf4j-simple "1.7.12"]
                  [org.clojars.smee/common "1.2.8-SNAPSHOT"]
                  ; web app
-                 [compojure "1.3.1"]
+                 [compojure "1.3.2"]
                  [ring/ring-jetty-adapter "1.3.2"] ;server
                  [liberator "0.12.2"] ;rest
                  [cheshire "5.4.0"] ;json
                  [ring/ring-json-patch "0.2.0"] ;wrap-json-params, local version with applied patch from pull request 11: enable on-error callback for malformed json
                  [prismatic/schema "0.4.0"] ;data schema description and coercion
-                 [rhizome "0.2.1"] ;dot visualization
+                 [rhizome "0.2.4"] ;dot visualization of graphs
                  ]
   :profiles {:dev {:dependencies [[spyscope "0.1.5"]]}
-             :routing {:main controlchannel.service
-                       :aot [controlchannel.service]}
              :routing-compiler {:main routing.routing-rest
                                 :aot [routing.routing-rest]}})

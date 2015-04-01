@@ -72,7 +72,7 @@ it can only be validated against
 
 (def demo-contracts "some demo contracts in the application domain of power plant maintenance" 
   {:users {"archiver" {:name "archiver"
-                       :password (pw "")
+                       :password (pw "archiver")
                        :queues #{"archiver-q-0"}
                        :exchange "archiver-ex-write"
                        :allocations {"1" #{"archiver-q-0"}

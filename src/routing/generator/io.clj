@@ -249,11 +249,12 @@ used by `construct-routing`."
                       :definition {:federation-upstream-set federation-upstream-set} 
                       :priority 0}))
 
-(defmethod apply-declaration! [:policy :declare] [_ {:keys [vhost pattern name definition policy] :or {policy 0}}]
+(defmethod apply-declaration! [:policy :declare] [_ {:keys [vhost pattern name definition policy apply-to] :or {policy 0 apply-to "all"}}]
   (lh/declare-policy vhost name
                      {:pattern pattern
                       :definition definition
-                      :policy policy})) 
+                      :policy policy
+                      :apply-to apply-to})) 
 
 (defmethod apply-declaration! [:shovel :declare] [vhost {n :name :as params}]
   (let [value (select-keys params shovel-keys)] 
@@ -337,6 +338,7 @@ Keep in mind that all other nodes loose their synchronization with the new maste
                 :pattern (format "^%s$" queue-name)
                 :definition {"ha-mode" "nodes" 
                              "ha-params" [new-master]}
+                :apply-to "queues"
                 :priority 100}] 
     (with-credentials credentials
       (infof "Temporarily force cluster to only respect node %s as master for queue %s, no slaves" new-master queue-name)

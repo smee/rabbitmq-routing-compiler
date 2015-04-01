@@ -634,4 +634,5 @@ where the message was stuck)."
    :name "ha-all-queues"
    :vhost vh
    :pattern ""
-   :definition {"ha-mode" "all"}})
+   :definition {"ha-mode" "all"}
+   :apply-to "queues"})
