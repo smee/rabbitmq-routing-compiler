@@ -47,8 +47,7 @@ The returned value is a set of all distinct maps of the `body`."
 to route message that would otherwise get dropped because
 there is no outgoing binding matching the routing key of a message."
   [vhost]
-  {:action :declare 
-   :resource :exchange 
+  {:resource :exchange 
    :vhost vhost
    :arguments {:name invalid_routing_key 
                :type "fanout" 
@@ -58,8 +57,7 @@ there is no outgoing binding matching the routing key of a message."
                :arguments {}}})
 
 (defn- generate-private-resources-for [user exchange vhost]
-  [{:action :declare 
-    :resource :exchange 
+  [{:resource :exchange 
     :vhost vhost
     :arguments {:name exchange 
                 :type "topic" 
@@ -67,8 +65,7 @@ there is no outgoing binding matching the routing key of a message."
                 :durable true 
                 :auto_delete false 
                 :arguments {:alternate-exchange invalid_routing_key}}}
-   {:action :declare 
-      :resource :exchange 
+   {:resource :exchange 
       :vhost vhost
       :arguments {:name (user-exchange-write-internal user)  
                   :type "topic" 
@@ -76,8 +73,7 @@ there is no outgoing binding matching the routing key of a message."
                   :durable true 
                   :auto_delete false 
                   :arguments {:alternate-exchange invalid_routing_key}}}
-   {:action :declare 
-    :resource :exchange 
+   {:resource :exchange 
     :vhost vhost
     :arguments {:name (user-exchange-read user) 
                 :type "topic" 
@@ -91,19 +87,16 @@ there is no outgoing binding matching the routing key of a message."
   [{:keys [users]} 
    {{admin :user} :management vhost :ppu-vhost} 
    vhost-of]
-  {:action :declare 
-   :resource :vhost 
+  {:resource :vhost 
    :name vhost}
-  {:action :declare 
-   :resource :permission 
+  {:resource :permission 
    :vhost vhost 
    :user admin 
    :configure ".*" 
    :write ".*" 
    :read ".*"}
   (for [user (keys users)] ;admin has all rights in user's vhosts
-    {:action :declare 
-     :resource :permission 
+    {:resource :permission 
      :vhost (vhost-of user) 
      :user admin 
      :configure ".*" 
@@ -114,8 +107,7 @@ there is no outgoing binding matching the routing key of a message."
   "Create ppu vhost, grant all permissions to the management-user for all generated vhosts and the ppu vhost."
   [{:keys [users]} creds vhost-of]
   (for [user (keys users)] ;admin has all rights in user's vhosts
-    {:action :declare 
-     :resource :permission 
+    {:resource :permission 
      :vhost (vhost-of user) 
      :user (-> creds :management :user) 
      :configure ".*" 
@@ -130,11 +122,10 @@ All routing keys have the following structure:
   (generate-invalid-routing-exchange vhost)
   (for [{user :name ex :exchange} (vals users)] 
     [(generate-private-resources-for user ex vhost)
-     {:action :bind 
-      :resource :exchange 
+     {:resource :exchange-binding 
       :vhost vhost
       :from ex 
-      :to (user-exchange-write-internal user) 
+      :to (user-exchange-write-internal user)
       :arguments {:routing_key (str user ".#") 
                   :arguments {}}}
      ; iterate all collections, create bindings for each access right
@@ -142,11 +133,10 @@ All routing keys have the following structure:
            cov-id cov-ids
            :let [{:keys [from to tag]} (get covenants cov-id)]
            :when (and (contains? users from) (contains? users to))]   
-       {:action :bind 
-        :resource :exchange 
+       {:resource :exchange-binding 
         :vhost vhost
         :from (user-exchange-write-internal from) 
-        :to (user-exchange-read to) 
+        :to (user-exchange-read to)
         :arguments {:routing_key (format "*.%s.%s" tag ccollection-id) 
                     :arguments {}}})]))
 
@@ -155,16 +145,14 @@ All routing keys have the following structure:
   "Each user has a private vhost named like the user."
   [{:keys [users]} _ vhost-of]
   (for [user (keys users)]
-    {:action :declare 
-     :resource :vhost
+    {:resource :vhost
      :name (vhost-of user)}))
 
 (deffeature construct-users 
   "Every generated user has its name as a password and a tag 'generated'."
   [{:keys [users]} _ vhost-of]
   (for [{user :name pw :password} (vals users)] 
-    {:action :declare 
-     :resource :user
+    {:resource :user
      :name user 
      :password_hash pw 
      :tags "generated"}))
@@ -172,14 +160,12 @@ All routing keys have the following structure:
 (deffeature construct-internal-shovel-user
   "TODO"
   [{:keys [users]} {:keys [shovel ppu-vhost]} vhost-of] 
-  {:action :declare 
-   :resource :user
+  {:resource :user
    :name (shovel :user) 
    :password_hash (shovel :password-hash) 
    :tags "generated"}
   (for [vhost (cons ppu-vhost (map vhost-of (keys users)))] 
-    {:action :declare 
-     :resource :permission 
+    {:resource :permission 
      :vhost vhost
      :user (shovel :user)
      :configure ".*";FIXME should not be necessary, why does the shovel plugin need to do declarations??? 
@@ -200,8 +186,7 @@ All routing keys have the following structure:
 Users have no permissions to change anything themselves."
   [{:keys [users queues]} _ vhost-of]
   (for [{user :name ex :exchange qs :queues} (vals users)] 
-    {:action :declare 
-     :resource :permission 
+    {:resource :permission 
      :vhost (vhost-of user)
      :user user
      :configure "^$" 
@@ -219,16 +204,14 @@ Users have no permissions to change anything themselves."
      (for [[c-id queues] allocations, queue queues
            :let [{:keys [from tag]} (get covenants c-id)
                  uerp (user-exchange-read user)]]  
-       {:action :bind 
-        :resource :queue 
+       {:resource :queue-binding 
         :vhost vh
         :to queue 
-        :from uerp 
+        :from uerp
         :arguments {:routing_key (format "%s.%s.*" from tag) 
                     :arguments {}}})
      (for [queue queues] 
-       {:action :declare 
-        :resource :queue
+       {:resource :queue
         :vhost vh
         :arguments {:name queue 
                     :durable true 
@@ -247,35 +230,29 @@ Users have no permissions to change anything themselves."
               ex-r (user-exchange-read user)
               ex-w ex]]
     [{:resource :federation-upstream 
-      :action :declare 
       :vhost vh
       :name uup 
       :uri (format "amqp://%s:%s@/%s" (mgmt :user) (mgmt :password) ppu-vhost)}
      {:resource :federation-upstream 
-      :action :declare 
       :vhost ppu-vhost
       :name udo 
       :uri (format "amqp://%s:%s@/%s" (mgmt :user) (mgmt :password) vh)}
      {:resource :federation-upstream-set
-      :action :declare
       :vhost vh
       :name uups
       :upstream uup
       :exchange ex-r}
      {:resource :federation-upstream-set
-      :action :declare
       :vhost ppu-vhost
       :name udos
       :upstream udo
       :exchange ex-w}
      {:resource :federation-policy
-      :action :declare
       :vhost ppu-vhost
       :federation-upstream-set udos
       :name (str udos "-policy")
       :pattern (str "^" ex-w "$")}
      {:resource :federation-policy
-      :action :declare
       :federation-upstream-set uups
       :name (str uups "-policy") 
       :vhost vh
@@ -289,10 +266,9 @@ Users have no permissions to change anything themselves."
               ex-r (user-exchange-read user)
               ex-w ex
               ex-w-queue (str ex-w "_Q")
-              ex-r-queue (str ex-r "_Q")]
-        {shovel-user :user shovel-password :password} shvl]
+              ex-r-queue (str ex-r "_Q")
+              {shovel-user :user shovel-password :password} shvl]]
     [{:resource :shovel
-      :action :declare
       :vhost vh
       :name (str ppu-vhost "->" vh) 
       :src-uri (format "amqp://%s:%s@/%s" shovel-user shovel-password ppu-vhost)
@@ -304,7 +280,6 @@ Users have no permissions to change anything themselves."
       :add-forward-headers false 
       :ack-mode "on-publish"}
      {:resource :shovel
-      :action :declare
       :vhost vh
       :name (str vh "->" ppu-vhost)
       :src-uri (format "amqp://%s:%s@/%s" shovel-user shovel-password vh)
@@ -315,28 +290,24 @@ Users have no permissions to change anything themselves."
       :reconnect-delay 1
       :add-forward-headers false 
       :ack-mode "on-publish"}
-     {:action :declare 
-      :resource :queue
+     {:resource :queue
       :vhost vh
       :arguments {:name ex-w-queue 
                   :durable true 
                   :auto_delete false 
                   :arguments {}}}
-     {:action :declare 
-      :resource :queue
+     {:resource :queue
       :vhost ppu-vhost
       :arguments {:name ex-r-queue 
                   :durable true 
                   :auto_delete false 
                   :arguments {}}}
-     {:action :bind 
-      :resource :queue 
+     {:resource :queue-binding 
       :vhost vh
       :to ex-w-queue 
       :from ex-w 
       :arguments {:routing_key "#" :arguments {}}}
-     {:action :bind 
-      :resource :queue 
+     {:resource :queue-binding 
       :vhost ppu-vhost
       :to ex-r-queue 
       :from ex-r 
@@ -364,7 +335,6 @@ Users have no permissions to change anything themselves."
               local-uri (format "amqp://%s:%s@/%s" remote-user local-pw vhost)]] 
     [; shovel TO the remote rabbitmq
      {:resource :shovel
-      :action :declare
       :vhost vhost
       :name (str vhost "-> remote" )
       :src-uri local-uri
@@ -377,7 +347,6 @@ Users have no permissions to change anything themselves."
       :ack-mode "on-publish"}
      ; shovel FROM the remote rabbitmq
      {:resource :shovel
-      :action :declare
       :vhost vhost
       :name (str  "remote ->" vhost)
       :src-uri (:remote-uri remote)
@@ -394,8 +363,7 @@ Users have no permissions to change anything themselves."
            :let [{:keys [from to tag]} (get covenants cov-id)]
            :when (contains? aliases from)
            :let [from-remote remote-user]]  
-       [{:action :bind 
-         :resource :exchange 
+       [{:resource :exchange-binding
          :vhost ppu-vhost
          :from ex;(user-exchange-write-internal from-remote) 
          :to (user-exchange-read to)
@@ -409,8 +377,7 @@ Users have no permissions to change anything themselves."
            :let [{:keys [from to tag]} (get covenants cov-id)]
            :when (contains? aliases to)
            :let [to remote-user]]  
-       {:action :bind 
-        :resource :exchange 
+       {:resource :exchange-binding 
         :vhost ppu-vhost
         :from (user-exchange-write-internal from) 
         :to (user-exchange-read to)
@@ -436,8 +403,7 @@ to the allocated queue."
                 local-user-exchange (get-in pf-user [:localusers from :exchange])
                 queues (get-in pf-user [:allocations cov-id])]]
       (for [q queues]
-        {:action :bind 
-         :resource :queue 
+        {:resource :queue-binding 
          :vhost (vhost-of (:name pf-user)) 
          :from  local-user-exchange
          :to q 
@@ -452,14 +418,12 @@ may delegate covenants to its local users."
         :let [vh (vhost-of pf-user)]]
     
     [; create local user
-     {:action :declare 
-      :resource :user 
+     {:resource :user 
       :name name 
       :password_hash password 
       :tags "generated"}
      ; localuser has his own writable exchange
-     {:action :declare 
-      :resource :exchange
+     {:resource :exchange
       :vhost vh
       :arguments {:name exchange 
                   :type "topic" 
@@ -468,8 +432,7 @@ may delegate covenants to its local users."
                   :auto_delete false 
                   :arguments {:alternate-exchange invalid_routing_key}}}
      ; localuser may write to his exchange, read specific queues
-     {:action :declare 
-      :resource :permission 
+     {:resource :permission 
       :vhost vh
       :user name
       :configure "^$" 
@@ -480,8 +443,7 @@ may delegate covenants to its local users."
      (for [cov-id delegation, 
            [cov-coll-name cov-coll-ids] collections
            :when (contains? cov-coll-ids cov-id)]
-       {:action :bind 
-        :resource :exchange 
+       {:resource :exchange-binding 
         :vhost vh
         :from exchange 
         :to pf-user-exchange 
@@ -505,8 +467,7 @@ may delegate covenants to its local users."
        (for [[cc-name cov-coll] collections 
              :when (contains? cov-coll cov-id)
              :let [to (user-alias contracts to)]] 
-         {:action :bind 
-          :resource :exchange 
+         {:resource :exchange-binding 
           :vhost ppu-vhost
           :from (:exchange user) 
           :to (get-in users [delegating-user :exchange]) 
@@ -520,15 +481,13 @@ may delegate covenants to its local users."
          ; if this is a proxy user, we don't know which covenant collection might have been used
          ; but since we got the message, we are the recipient. No need to restrict it further
          (if (not= from from') ;remote user
-           {:action :bind 
-            :resource :exchange 
+           {:resource :exchange-binding 
             :vhost ppu-vhost
             :from (get-in users [from' :exchange]) ;(user-exchange-write-internal from') 
             :to (user-exchange-read user-name) 
             :arguments {:routing_key (format "%s.%s.*" from tag) 
                         :arguments {}}}
-           {:action :bind 
-            :resource :exchange 
+           {:resource :exchange-binding 
             :vhost ppu-vhost
             :from (user-exchange-write-internal from') 
             :to (user-exchange-read user-name) 
@@ -538,18 +497,15 @@ may delegate covenants to its local users."
 ;;;;;;;;;;;;;;;; Tracing, Poor mans auditing.... ;;;;;;;;;;;;;;;;
 (defn- tracing-in-vhost [queue-name vhost]
   #{{:resource :tracing 
-     :action :declare 
      :vhost vhost}
-    {:action :declare 
-     :resource :queue
+    {:resource :queue
      :vhost vhost
      :arguments {:name queue-name 
                  :durable true 
                  :auto_delete false 
                  :arguments {:x-message-ttl 30000
                              :x-max-length 100}}}
-    {:action :bind 
-     :resource :queue 
+    {:resource :queue-binding 
      :vhost vhost
      :to queue-name
      :from "amq.rabbitmq.trace" 
@@ -575,16 +531,14 @@ Queue keeps messages for 30s, holds max. 100 messages (to avoid making this feat
 then get shoveled to `invalid_routing_key` in the ppu vhost (with forward headers so we know
 where the message was stuck)."
   [_ {:keys [ppu-vhost]} _]
-  {:action :declare 
-   :resource :queue
+  {:resource :queue
    :vhost ppu-vhost 
    :arguments {:name unroutable-queue 
                :durable true 
                :auto_delete false 
                :arguments {:x-message-ttl (* 1000 60 60 24) ;save for max. 24 hours 
                            :x-max-length 100}}}
-  {:action :bind 
-   :resource :queue 
+  {:resource :queue-binding 
    :vhost ppu-vhost
    :to unroutable-queue 
    :from invalid_routing_key 
@@ -597,22 +551,19 @@ where the message was stuck)."
   [{:keys [users] :as contracts} {{:keys [ppu-vhost shovel-user shovel-password]} :shovel :as credentials} vhost-of]
   (for [user (keys users)
         :let [vhost (vhost-of user)]] 
-    [{:action :declare 
-      :resource :queue
+    [{:resource :queue
       :vhost vhost 
       :arguments {:name unroutable-queue 
                   :durable true 
                   :auto_delete false 
                   :arguments {:x-message-ttl (* 1000 30) ;save for max. 30s 
                               :x-max-length 100}}};at most save the last 100 messages
-     {:action :bind 
-      :resource :queue 
+     {:resource :queue-binding 
       :vhost vhost
       :to unroutable-queue 
       :from invalid_routing_key 
       :arguments {:routing_key "#" :arguments {}}}
      {:resource :shovel
-      :action :declare
       :vhost vhost 
       :name (str "unroutable in " vhost) 
       :src-uri (format "amqp://%s:%s@/%s" shovel-user shovel-password vhost)
@@ -629,10 +580,9 @@ where the message was stuck)."
 (deffeature construct-high-availability-for-queues
   "Ensure that all queues get replicated to all cluster nodes"
   [_ {vh :ppu-vhost} _]
-  {:action :declare
-   :resource :policy
+  {:resource :policy
    :name "ha-all-queues"
    :vhost vh
    :pattern ""
-   :definition {"ha-mode" "all"}
+   :definition {:ha-mode "all"}
    :apply-to "queues"})

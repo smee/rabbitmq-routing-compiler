@@ -13,20 +13,20 @@ routing.generator.viz
 
 
 ;;;;;;;;;;;;;; experiments with Zach Tellman's Rhizome
-(defn- queue? [decl]  
-  (= [:declare :queue] ((juxt :action :resource) decl)))
+(defn- queue? [{r :resource}]  
+  (= :queue r))
 
-(defn- exchange? [decl] 
-  (= [:declare :exchange] ((juxt :action :resource) decl)))
+(defn- exchange? [{r :resource}] 
+  (= :exchange r))
 
-(defn- binding? [decl] 
-  (= :bind (:action decl)))
+(defn- binding? [{r :resource}] 
+  (#{:queue-binding :exchange-binding} r))
 
-(defn- shovel? [decl]
-  (= :shovel (:resource decl)))
+(defn- shovel? [{r :resource}]
+  (= :shovel r))
 
-(defn- permission? [decl]
-  (= :permission (:resource decl)))
+(defn- permission? [{r :resource}]
+  (= :permission r))
 
 (defn- name-of [decl]
   (:name (:arguments decl)))
@@ -38,7 +38,7 @@ routing.generator.viz
   (-> a :arguments :arguments :alternate-exchange))
 
 (defn alternate-exchange-binding? [binding]
-  (= :alternate-binding (:resource binding)))
+  (-> binding :arguments :arguments :alternate-binding))
 
 ;;;;;;;;; functions to query for outgoing bindings and targets of bindings ;;;;;;;;;;;;;;;;;;;;;;
 (defn- with-incoming [binding]
@@ -48,7 +48,7 @@ routing.generator.viz
   #(and (= (:vhost binding) (:vhost %))
         (= (-> binding :host :name) (-> % :host :name)) 
         (= (:to binding) (name-of %))
-        (= (:resource binding) (:resource %))))
+        (.startsWith (name (:resource binding)) (name (:resource %)))))
 
 (defn- outgoing-bindings-of 
   "Get all standard bindings starting from the exchange/queue `decl`."
@@ -165,7 +165,7 @@ that are located on the path of a message that gets send to the `start-node`
 with a routing key `routing-key`."
   [adjacent directives start-node routing-key] ;TODO alternate exchange if no outgoing binding matches
   (tree-seq (comp not empty?)  
-            (fn [decl] 
+            (fn [decl]
               (cond 
                 (binding? decl) (filter (binding-target-of? decl) directives)
                 (shovel? decl) [(shovel-target-of directives decl)]
@@ -239,7 +239,7 @@ with a routing key `routing-key`."
   "Create a dot string for graphviz for the given declarations (refer to routing.generator.io for details of their format)"
   [directives & {:keys [with-ae? with-shovels?
                         start-vhost start-exchange routing-key]
-                 :or {with-ae? true with-shovels? true}}] (def directives directives) 
+                 :or {with-ae? true with-shovels? true}}] 
   (let [exchanges (filter exchange? directives)
         queues (filter queue? directives)
         names (->> directives (map (comp :name :host)) distinct) 
@@ -271,7 +271,7 @@ with a routing key `routing-key`."
                              (cond 
                                alt? (ae-binding-style binding) 
                                (= (:vhost a) (:vhost b)) (binding-style binding)
-                               :else (shovel-style binding))))]
+                               :else (shovel-style binding))))] 
     (graph->dot (concat exchanges queues names) 
                 adjacent
                 :directed? true

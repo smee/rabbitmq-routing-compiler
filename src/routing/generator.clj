@@ -24,12 +24,14 @@ routing.generator
                :permission 2
                :exchange 3
                :queue 4
-               :policy 5
-               :federation-policy 6
-               :federation-upstream 7
-               :federation-upstream-set 8
-               :shovel 9
-               :tracing 10}]
+               :exchange-binding 5
+               :queue-binding 6
+               :policy 7
+               :federation-policy 8
+               :federation-upstream 9
+               :federation-upstream-set 10
+               :shovel 11
+               :tracing 12}] 
     (order (:resource m))))
 
 (defn declaration-comparator 
@@ -52,8 +54,6 @@ routing.generator
     (cond 
       (< prio1 prio2) -1
       (> prio1 prio2) 1
-      (and (= (:action o1) :bind) (= (:action o2) :declare)) 1
-      (and (= (:action o2) :bind) (= (:action o1) :declare)) -1
       :else 0))) 
 
 (s/defn fetch-all 
@@ -163,8 +163,8 @@ currently present within a rabbitmq instance."
           @routing.contracts/contracts
           ;routing.contracts/empty-contracts
           @routing.routing-rest/management-api
-          ;create-all-separate-vhosts
-          create-all-single-vhost
+          create-all-separate-vhosts
+          ;create-all-single-vhost
           ))
 
   
@@ -177,6 +177,12 @@ currently present within a rabbitmq instance."
   
   (set-tracing! "VH_ppu" true @routing.routing-rest/management-api)
   (set-tracing! "VH_ppu" false @routing.routing-rest/management-api)
+  
+  (let [groups (->> (create-all-single-vhost @routing.contracts/contracts @routing.routing-rest/management-api)
+                 (sort-by identity declaration-comparator)
+                 (partition-by :resource))]
+    (doseq [decls groups]
+      (clojure.pprint/print-table decls)))
   )
 
 ;; TODO store snapshots for recovery/rollback scenarios!
