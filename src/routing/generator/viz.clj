@@ -1,7 +1,7 @@
 (ns ^{:doc "render current routing structures"} 
 routing.generator.viz
   (:require [clojure.java.shell :as sh]
-            [org.clojars.smee.seq :refer [find-where distinct-by]]
+            [org.clojars.smee.seq :refer [find-where distinct-by]] 
             [rhizome.viz :refer [view-graph]]
             [rhizome.dot :refer [graph->dot]] 
             [langohr.core :refer [settings-from]]))
@@ -12,134 +12,17 @@ routing.generator.viz
   (:out (sh/sh "dot" "-Tpng" :in dot :out-enc :bytes)))
 
 
-;;;;;;;;;;;;;; experiments with Zach Tellman's Rhizome
 (defn- queue? [{r :resource}]  
   (= :queue r))
 
 (defn- exchange? [{r :resource}] 
   (= :exchange r))
 
-(defn- binding? [{r :resource}] 
-  (#{:queue-binding :exchange-binding} r))
-
-(defn- shovel? [{r :resource}]
-  (= :shovel r))
-
-(defn- permission? [{r :resource}]
-  (= :permission r))
-
 (defn- name-of [decl]
-  (:name (:arguments decl)))
+  (-> decl :arguments :name))
 
 (defn- rk [decl]
   (-> decl :arguments :routing_key))
-
-(defn ae-name-of [a] 
-  (-> a :arguments :arguments :alternate-exchange))
-
-(defn alternate-exchange-binding? [binding]
-  (-> binding :arguments :arguments :alternate-binding))
-
-;;;;;;;;; functions to query for outgoing bindings and targets of bindings ;;;;;;;;;;;;;;;;;;;;;;
-(defn- with-incoming [binding]
-  #(with-meta % {:incoming binding}))
-
-(defn- binding-target-of? [binding]
-  #(and (= (:vhost binding) (:vhost %))
-        (= (-> binding :host :name) (-> % :host :name)) 
-        (= (:to binding) (name-of %))
-        (.startsWith (name (:resource binding)) (name (:resource %)))))
-
-(defn- outgoing-bindings-of 
-  "Get all standard bindings starting from the exchange/queue `decl`."
-  [bindings decl]
-  (bindings [(-> decl :host :name) (:vhost decl) (name-of decl)]))
-
-(defn- direct-children 
-  "Find referenced nodes via regular bindings from the given `decl` to any other queue or exchange.
-Attaches the binding declaration as meta field `:incoming`."
-  [decl bindings directives]
-  (let [outgoing-bindings (outgoing-bindings-of bindings decl)]
-    (mapcat #(->> directives
-               (filter (binding-target-of? %))
-               (map (with-incoming %))) outgoing-bindings)))
-
-(defn- alternate-ex-binding-fn 
-  "Find binding to an alternate-exchange, if it exists."
-  [decl exchanges]
-  (when (ae-name-of decl)
-    (with-meta 
-      (find-where #(and (= (:vhost %) (:vhost decl))
-                        (= (-> % :host :name) (-> decl :host :name)) 
-                        (= (name-of %) (ae-name-of decl))) 
-                  exchanges)
-      {:incoming {:resource :alternate-binding
-                  :source decl}})))
-
-(defn- host-n-port [uri]
-  (let [s (settings-from uri)] 
-    (format "%s:%s" (:host s) (:port s))))
-
-(defn- outgoing-shovels [directives queue]
-  (->> directives
-    (filter shovel?)
-    (filter (fn [shovel]
-              (let [s (-> shovel :src-uri settings-from)
-                    d (-> shovel :dest-uri settings-from)
-                    src-loc (host-n-port (:src-uri shovel))
-                    src-vhost (:vhost s)]                
-                #_(println (= src-vhost (:vhost queue))
-                         (= (:src-queue shovel) (name-of queue))
-                         (= "localhost" (:host s) (:host d))
-                         (= (-> shovel :host :name) (-> queue :host :name))
-                         (find-where #(= % src-loc) (-> queue :host :aliases))
-                         src-loc
-                         (-> queue :host :aliases)) 
-                (and (= src-vhost (:vhost queue))
-                     (= (:src-queue shovel) (name-of queue))
-                     (or
-                       ; source and target are local
-                       (and 
-                         (= "localhost" (:host s) (:host d))
-                         (= (-> shovel :host :name) (-> queue :host :name)))
-                       ;external target, local queue
-                       (if (= "localhost" (:host s))
-                         ; local->remote ; FIXME ugly hack: assuming that the upstream user always has the name "upstream"!
-                         (or (.contains (:src-queue shovel) "upstream")
-                             (.contains (:src-queue shovel) "proxy"))
-                         ; remote->local
-                         (find-where #(= % src-loc) (-> queue :host :aliases))
-                         ))))))))
-
-
-(defn- shovel-target-of [directives shovel]
-  (let [{:keys [src-uri dest-uri dest-exchange host]} shovel
-        dest-settings (settings-from dest-uri)
-        src-settings (settings-from src-uri)
-        dest-vhost (:vhost dest-settings)
-        dest-location (host-n-port dest-uri)  
-        {shovel-hostname :name ha :aliases} host] 
-    (with-meta
-      (find-where (fn [target] 
-                    (and (= dest-vhost (:vhost target))
-                         (exchange? target)
-                         (= dest-exchange (name-of target))
-                         (or (= shovel-hostname (-> target :host :name)) ;local target
-                             (some #{dest-location} (-> target :host :aliases))
-                             ; local target, remote source FIXME broken!
-                             
-                             ))) directives)
-        {:incoming shovel})))
-
-(defn- shovel-bindings-fn 
-  "Find exchange connected to the given queue (within the same host only, for now)"
-  [directives decl]
-  (->> decl
-    (outgoing-shovels directives)
-    (map (partial shovel-target-of directives))))
-
-(defn- permission-of-user [user permissions]
-  (find-where #(= user (:user %)) permissions))
 
 ;;;;;;;;;;;;;; tracing of a message's path through rabbit
 
@@ -155,41 +38,40 @@ Attaches the binding declaration as meta field `:incoming`."
     (.replaceAll "#" ".*")
     re-pattern))
 
-(defn direct-bindings-between [bindings directives a b]
-  (let [outgoing-bindings (outgoing-bindings-of bindings a)]
-    (filter #(= b (find-where (binding-target-of? %) directives)) outgoing-bindings)))
+(defn should-follow-edge? [node routing-key {r :resource :as edge}]
+  (or
+    (nil? routing-key) 
+    (and (= :exchange-binding r) (re-matches (rabbit->regular-regex (rk edge)) routing-key)) 
+    (and (= :queue-binding r) (re-matches (rabbit->regular-regex (rk edge)) routing-key))
+    (= :shovel r))
+  )
 
-(defn path-of-message 
+(defn transitive-closure-of 
   "Traverse all directives and extract all resources (exchanges, queues, bindings)
 that are located on the path of a message that gets send to the `start-node`
 with a routing key `routing-key`."
-  [adjacent directives start-node routing-key] ;TODO alternate exchange if no outgoing binding matches
-  (tree-seq (comp not empty?)  
-            (fn [decl]
-              (cond 
-                (binding? decl) (filter (binding-target-of? decl) directives)
-                (shovel? decl) [(shovel-target-of directives decl)]
-                (alternate-exchange-binding? decl) (->> decl
-                                                     :source
-                                                     adjacent
-                                                     (map #(when (alternate-exchange-binding? (:incoming (meta %)))
-                                                            %)))
-                :else-is-exchange-or-queue 
-                (let [targets (adjacent decl)
-                      bindings (map (comp :incoming meta) targets)
-                      valid-direct-bindings (filter #(and (binding? %) 
-                                                          (re-matches (rabbit->regular-regex (rk %)) routing-key)) 
-                                                    bindings)
-                      ae-bindings (filter alternate-exchange-binding? bindings)
-                      shovels (filter shovel? bindings)]
-                  (concat shovels
-                          valid-direct-bindings
-                          ; only add the alternate exchange if there is no shovel and no direct binding where the routing key matches
-                          (when (and (empty? shovels) 
-                                     (empty? valid-direct-bindings)
-                                     (not (queue? decl))) 
-                            ae-bindings))))) 
-            start-node))
+  [nodes edges start-node routing-key]
+  (let [graph (apply merge-with merge 
+                  (for [[n1 targets] edges, [n2 edges] targets, edge edges]
+                    {n1 {edge n2}}))]
+    (loop [visited #{}, hull #{start-node}, to-visit #{start-node}]
+      (if (empty? to-visit)
+        hull
+        (let [node (first to-visit)
+              to-visit (disj to-visit node)
+              potential-edges (get graph node)
+              real-edges (filter (partial should-follow-edge? node routing-key) (keys potential-edges))
+              real-edges (if (empty? real-edges) 
+                           [(find-where #(= :alternate-exchange-binding (:resource %)) (keys potential-edges))]
+                           real-edges)]
+          ; TODO fanout and headers exchange
+          ; TODO alternate exchange if no other routing occurs
+          ; TODO DLX for queues
+          (recur (conj visited node) 
+                 (apply conj hull node real-edges) 
+                 (if potential-edges 
+                   (into to-visit (map potential-edges real-edges))
+                   to-visit)))))))
 
 ;;;;;;;;;;;;;; graphviz ;;;;;;;;;;;;;;;;;;;;;;;;;
 (defn obj->color [obj] 
@@ -205,16 +87,21 @@ with a routing key `routing-key`."
 (defn queue-style [decl]
   {:fillcolor "red" ;(obj->color (:vhost decl))
    :shape "record"
-   :label [[(name-of decl) "" "" "" "" ""]] 
+   :label [[(name-of decl) "" "" ""]] 
    :fontcolor "white"
    :style :filled})
 
-(defn ae-binding-style [decl]
+(defn ae-binding-style [_]
   {:style "dotted"
    :color "red"
    :label ""})
 
-(defn shovel-style [decl]
+(defn dlx-binding-style [_]
+  {:style "dotted"
+   :color "red"
+   :label ""})
+
+(defn shovel-style [_]
   {:color "red" ;"#FFC0C0" ;light red
    :fontcolor "red" ;"#FFC0C0"
    :style "dashed"
@@ -225,7 +112,7 @@ with a routing key `routing-key`."
 (defn binding-style [decl]
   {:color "black"
    :fontcolor "black"
-   :label (rk decl)   })
+   :label (rk decl)})
 
 (def ^:const not-in-path
   {:color "grey"
@@ -235,45 +122,89 @@ with a routing key `routing-key`."
 (defn vhost-style [^String name]
   {:label name})
 
+;;;;;;;;;;;;;;;;;; create graphs ;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defn- alternate-exchange-binding? [decl]
+  (-> decl :arguments :arguments :alternate-binding))
+
+(defn- dead-letter-binding? [decl]
+  (-> decl :arguments :arguments :x-dead-letter-exchange))
+
+(defn extract-alternate-exchange-bindings [exchanges]
+  (for [e exchanges :when (-> e :arguments :arguments :alternate-exchange)]
+    {:resource :alternate-exchange-binding
+     :vhost (:vhost e)
+     :host (:host e)
+     :from (name-of e)
+     :to (-> e :arguments :arguments :alternate-exchange)}))
+
+(defn extract-dlx-bindings [queues]
+  (for [q queues :when (-> q :arguments :arguments :x-dead-letter-exchange)]
+    {:resource :dlx-binding
+     :vhost (:vhost q)
+     :host (:host q)
+     :from (name-of q)
+     :to (-> q :arguments :arguments :x-dead-letter-exchange)}))
+
+(defn- create-adjacency-matrix 
+  "Create a map of node to map of node to edge."
+  [directives]
+  (let [f #(into {} 
+                 (comp (filter %) 
+                       (map (juxt (juxt name-of :vhost) identity)))
+                 directives)
+        exchanges (f exchange?)
+        queues (f queue?)
+        directives (concat directives 
+                           (extract-alternate-exchange-bindings directives) 
+                           (extract-dlx-bindings directives))] 
+    (reduce (fn [m {:keys [resource from to vhost] :as d}]
+              (let [[a b] 
+                    (condp = resource
+                      :exchange-binding [(exchanges [from vhost]) (exchanges [to vhost])] 
+                      :queue-binding [(exchanges [from vhost]) (queues [to vhost])]
+                      :alternate-exchange-binding [(exchanges [from vhost]) (exchanges [to vhost])]
+                      :dlx-binding [(queues [from vhost]) (exchanges [to vhost])]
+                      :shovel [(queues [(:src-queue d) (-> d :src-uri settings-from :vhost)]) (exchanges [(:dest-exchange d) (-> d :dest-uri settings-from :vhost)])]
+                      nil)]
+                (if (and a b)
+                  (update-in m [a b] (fnil conj []) d)
+                  m))) 
+            {} directives)))
+
 (defn routing->graph 
-  "Create a dot string for graphviz for the given declarations (refer to routing.generator.io for details of their format)"
-  [directives & {:keys [with-ae? with-shovels?
-                        start-vhost start-exchange routing-key]
-                 :or {with-ae? true with-shovels? true}}] 
-  (let [exchanges (filter exchange? directives)
+  "Create a dot string for graphviz for the given declarations 
+(refer to routing.generator.features for details of their format)"
+  [directives {:keys [start-vhost 
+                      start-exchange 
+                      routing-key]}] (def directives directives) 
+  (org.clojars.smee.util/def-let [exchanges (filter exchange? directives)
         queues (filter queue? directives)
-        names (->> directives (map (comp :name :host)) distinct) 
-        bindings (->> directives
-                   (filter binding?)
-                   (group-by (juxt (comp :name :host) :vhost :from)))
-        adjacent #(if (string? %)
-                    nil ;dummy node
-                    (concat (direct-children % bindings directives) 
-                            (when with-ae? [(alternate-ex-binding-fn % exchanges)]) 
-                            (when with-shovels? (shovel-bindings-fn directives %))))
-        start (keep #(when (and (= (:vhost %) start-vhost) (= (:name (:arguments %)) start-exchange))
+        hosts (->> directives (map (comp :name :host)) distinct)
+        edges (create-adjacency-matrix directives) 
+        start (some #(when (and (= (:vhost %) start-vhost)
+                                (exchange? %)
+                                (= (name-of %) start-exchange))
                        %) directives)
-        path (if (some nil? [start-vhost start-exchange routing-key])
-               (set directives)
-               (set (mapcat #(path-of-message adjacent directives % routing-key) start)))
+        path (if (and start-vhost start-exchange)
+               (transitive-closure-of (concat exchanges queues) edges start routing-key)
+               (set (concat directives (for [[_ m] edges, [_ edge] m] edge))))
         node->descriptor (fn [decl] 
                            (cond 
-                             (= :exchange (:resource decl)) (exchange-style decl) 
-                             (= :queue (:resource decl)) (queue-style decl)
+                             (exchange? decl) (exchange-style decl) 
+                             (queue? decl) (queue-style decl)
                              :else {:color "transparent"
                                     :fillcolor "transparent"
                                     :shape "none"
                                     :width 0
                                     :height 0}))
-        edge->descriptor (fn [a b] 
-                           (let [binding (-> b meta :incoming)
-                                 alt? (alternate-exchange-binding? binding)] 
-                             (cond 
-                               alt? (ae-binding-style binding) 
-                               (= (:vhost a) (:vhost b)) (binding-style binding)
-                               :else (shovel-style binding))))] 
-    (graph->dot (concat exchanges queues names) 
-                adjacent
+        edge->descriptor (fn [{r :resource :as b}] 
+                           (cond 
+                             (= r :alternate-exchange-binding) (ae-binding-style b)
+                             (= r :dlx-binding) (dlx-binding-style b)
+                             (= r :shovel) (shovel-style b)
+                             :else (binding-style b)))] 
+    (graph->dot (concat exchanges queues hosts) 
+                (comp keys edges) 
                 :directed? true
                 :vertical? false
                 :options {:bgcolor  :transparent
@@ -292,23 +223,10 @@ with a routing key `routing-key`."
                                      (if (contains? path %)
                                        desc
                                        (merge desc not-in-path)))
-                :edge->descriptor #(let [desc (edge->descriptor %1 %2)
-                                         binding (-> %2 meta :incoming)] 
-                                     (if (contains? path binding)
-                                       desc
-                                       (merge desc not-in-path))))))
-
-(comment
-  (def tracing-msgs
-    (read-string (slurp "tracingmsgs.edn")))
-  
-  (let [start (find-where #(and (= (:vhost %) "VH_ppu") (= (:name (:arguments %)) "winccoa-ex-write")) directives)
-        exchanges (filter exchange? directives)
-        bindings (->> directives
-                   (filter binding?)
-                   (group-by (juxt (comp :host :name) :vhost :from)))
-        adjacent #(concat (direct-children % bindings directives) 
-                          [(alternate-ex-binding-fn % exchanges)] 
-                          (shovel-bindings-fn directives %)) ]
-  (path-of-message adjacent directives start "winccoa.data.ALL"))
-  ) 
+                :edge->descriptor (fn [a b] 
+                                    (vec
+                                      (for [binding (get-in edges [a b])
+                                            :let [desc (edge->descriptor binding)]] 
+                                        (if (contains? path binding)
+                                          desc
+                                          (merge desc not-in-path))))))))

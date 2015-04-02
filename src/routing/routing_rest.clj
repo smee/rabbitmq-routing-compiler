@@ -62,10 +62,7 @@ routing.routing-rest
 (defn- post? [r] (= :post (get-in r [:request :request-method])))
 
 (defresource rendering-resource 
-  [vhost {:keys [with-ae? 
-                 with-shovels?
-                 with-federation?
-                 start-vhost 
+  [vhost {:keys [start-vhost 
                  start-exchange 
                  routing-key
                  strategy]}]
@@ -76,7 +73,7 @@ routing.routing-rest
                      creds @management-api
                      vhosts (if (string? vhost) [vhost] vhost)
                      declarations (if (not-empty vhosts) 
-                                    (mapcat #(concat (io/fetch-routing % creds :incl-federation? with-federation?)
+                                    (mapcat #(concat (io/fetch-routing % creds)
                                                      (io/fetch-shovels % creds)) vhosts)
                                     (mapcat #(map (fn [decl] (assoc decl :host (select-keys (meta %) [:name :aliases]))) 
                                                   (generator-fn % creds
@@ -86,11 +83,11 @@ routing.routing-rest
                                             [@con/contracts
                                              ;con/remote-contracts
                                              ;con/demo-delegation
-                                             ]))]
+                                             ]))] 
                  (-> declarations
-                   (viz/routing->graph :with-ae? with-ae? :with-shovels? with-shovels?
-                                       :start-vhost start-vhost :start-exchange start-exchange 
-                                       :routing-key routing-key)
+                   (viz/routing->graph {:start-vhost start-vhost 
+                                        :start-exchange start-exchange 
+                                        :routing-key routing-key})
 ;                   (->> (#(do (println %) %)))
                    viz/dot->png
                    (java.io.ByteArrayInputStream.)))))
@@ -164,12 +161,9 @@ routing.routing-rest
                                           (build-entry-url (:request %) true "routing.png"))))
       (ANY "/management" [] management-api-resource)
       (ANY "/all" [] everything) 
-      (GET "/routing.png" [ae fed shovels vhost start-vhost start-exchange routing-key strategy] 
+      (GET "/routing.png" [vhost start-vhost start-exchange routing-key strategy] 
            (rendering-resource vhost 
-                               {:with-ae? (Boolean/parseBoolean ae) 
-                                :with-shovels? (Boolean/parseBoolean shovels)
-                                :with-federation? (Boolean/parseBoolean fed)
-                                :start-vhost start-vhost
+                               {:start-vhost start-vhost
                                 :start-exchange start-exchange
                                 :routing-key routing-key
                                 :strategy (keyword strategy)})))
