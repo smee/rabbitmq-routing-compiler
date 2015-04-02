@@ -47,14 +47,22 @@ The returned value is a set of all distinct maps of the `body`."
 to route message that would otherwise get dropped because
 there is no outgoing binding matching the routing key of a message."
   [vhost]
-  {:resource :exchange 
+  [{:resource :exchange 
    :vhost vhost
    :arguments {:name invalid_routing_key 
                :type "fanout" 
                :internal false 
                :durable true 
                :auto_delete false 
-               :arguments {}}})
+               :arguments {}}}
+   {:resource :exchange 
+   :vhost vhost
+   :arguments {:name "admin.dropped" 
+               :type "fanout" 
+               :internal false 
+               :durable true 
+               :auto_delete false 
+               :arguments {}}}])
 
 (defn- generate-private-resources-for [user exchange vhost]
   [{:resource :exchange 
@@ -216,7 +224,7 @@ Users have no permissions to change anything themselves."
         :arguments {:name queue 
                     :durable true 
                     :auto_delete false 
-                    :arguments {}}})])) ; TODO x-dead-letter-exchange, see https://www.rabbitmq.com/dlx.html
+                    :arguments {:x-dead-letter-exchange "admin.dropped"}}})])) ; TODO x-dead-letter-exchange, see https://www.rabbitmq.com/dlx.html
 
 (deffeature construct-federations 
   "Federation based alternative of construct-internal-shovels"
