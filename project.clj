@@ -11,7 +11,7 @@
                  [clojurewerkz/urly "1.0.0"]
                  [org.clojure/tools.logging "0.3.1"]
                  [org.slf4j/slf4j-simple "1.7.12"]
-                 [org.clojars.smee/common "1.2.8-SNAPSHOT"]
+                 [org.clojars.smee/common "1.2.8"]
                  ; web app
                  [compojure "1.3.3"]
                  [ring/ring-jetty-adapter "1.3.2"] ;server
