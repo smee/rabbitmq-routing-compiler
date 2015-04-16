@@ -168,7 +168,7 @@ routing.routing-rest
                                 :routing-key routing-key
                                 :strategy (keyword strategy)})))
     wrap-keyword-params
-    (wrap-json-params {:on-error (fn [handler req ex] (error ex) (.printStackTrace ex) {:status 400 :body "Malformed JSON."})})
+    wrap-json-params
     wrap-params
     (liberator.dev/wrap-trace :ui #_:header)))
 

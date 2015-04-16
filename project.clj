@@ -17,7 +17,7 @@
                  [ring/ring-jetty-adapter "1.3.2"] ;server
                  [liberator "0.12.2"] ;rest
                  [cheshire "5.4.0"] ;json
-                 [ring/ring-json-patch "0.2.0"] ;wrap-json-params, local version with applied patch from pull request 11: enable on-error callback for malformed json
+                 [ring/ring-json "0.3.1"] 
                  [prismatic/schema "0.4.0"] ;data schema description and coercion
                  [rhizome "0.2.4"] ;dot visualization of graphs
                  ]
