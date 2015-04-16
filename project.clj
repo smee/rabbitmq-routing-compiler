@@ -22,6 +22,8 @@
                  [rhizome "0.2.5"] ;dot visualization of graphs
                  [com.stuartsierra/component "0.2.3"] ; run different parts as components
                  ]
+  :plugins [[lein-set-version "0.4.1"]]
   :profiles {:dev {:dependencies [[spyscope "0.1.5"]]}
              :routing-compiler {:main routing.routing-rest
                                 :aot [routing.routing-rest]}})
+
