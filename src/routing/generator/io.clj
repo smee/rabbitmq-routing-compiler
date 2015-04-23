@@ -34,7 +34,7 @@
 
 (defmacro with-credentials [creds & body]
   `(let [creds# ~creds]
-     (binding [lh/*endpoint* (-> creds# :management :url ) 
+     (binding [lh/*endpoint* (-> creds# :node-urls rand-nth) 
                lh/*username* (-> creds# :management :user) 
                lh/*password* (-> creds# :management :password)]
        ~@body))) 
@@ -77,13 +77,14 @@ used by `construct-routing`."
   [vhost creds]
   (with-credentials creds 
     (as-flat-set
-      (for [{n :name vh :vhost p :pattern {us :federation-upstream-set} :definition} 
+      (for [{n :name vh :vhost p :pattern at :apply-to {us :federation-upstream-set} :definition} 
             (GET (url "/api/policies/%s" vhost)) 
             :when (not (nil? us))]
         {:resource :federation-policy
          :name n
          :vhost vh
          :pattern p
+         :apply-to at
          :federation-upstream-set us})
       (for [{vh :vhost n :name {uri :uri ex :exchange} :value} 
             (GET (url "/api/parameters/federation-upstream/%s" vhost))]
@@ -217,7 +218,13 @@ used by `construct-routing`."
 (defmethod apply-declaration! :federation-upstream [vhost {:keys [name uri]}]
   (let [uss-name (str name "-set")]
     (PUT (url "/api/parameters/federation-upstream/%s/%s" vhost name) 
-         {:value {:uri uri :ack-mode "on-confirm" :trust-user-id true
+         {:value {:uri uri 
+                  :ack-mode "on-confirm"
+                  :prefetch-count 1000
+;                  :expires 123
+;                  :message-ttl 123
+;                  :reconnect-delay 123
+                  :trust-user-id true
                   :max-hops 1000}
           :name name
           :vhost vhost
@@ -231,9 +238,10 @@ used by `construct-routing`."
         :vhost vhost
         :component "federation-upstream-set"}))
 
-(defmethod apply-declaration! :federation-policy [_ {:keys [vhost pattern federation-upstream-set name]}]
+(defmethod apply-declaration! :federation-policy [_ {:keys [vhost pattern federation-upstream-set name apply-to]}]
   (lh/declare-policy vhost name 
                      {:pattern pattern 
+                      :apply-to apply-to
                       :definition {:federation-upstream-set federation-upstream-set} 
                       :priority 0}))
 
@@ -299,7 +307,7 @@ used by `construct-routing`."
 (defmethod remove-declaration! :federation-upstream-set [_ {:keys [name vhost]}] 
   (DELETE (url "/api/parameters/federation-upstream-set/%s/%s" vhost name)))
 
-(defmethod remove-declaration! :federation-policy [_ {:keys [vhost name]}]
+(defmethod remove-declaration! :federation-policy [_ {:keys [vhost name] :as o}] (info o) (info (url "/api/policies/%s/%s" vhost name)) 
   (DELETE (url "/api/policies/%s/%s" vhost name)))
 
 (defmethod remove-declaration! :policy [_ {:keys [vhost name]}]

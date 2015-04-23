@@ -28,7 +28,7 @@ routing.schemas
                      :queues +Queues+
                      :exchange s/Str
                      :allocations +Allocations+
-                     ;a user may represent manalysistiple upstream users (à la transparent proxy)
+                     ;a user may represent multiple upstream users (à la transparent proxy)
                      (s/optional-key :remote) +RemoteUser+ 
                      (s/optional-key :localusers) {+UserName+ +LocalUser+}
                      (s/optional-key :delegation) {+UserName+ #{+CovenantId+}}}) 
@@ -45,14 +45,16 @@ routing.schemas
 ;;;;;;;;;;;;;; Schema Definitions for Credentials ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (def +Credentials+ 
-  "Schema for credentials for rabbitmq's management api and other credentials.
+  "Schema for credentials for rabbitmq's management api and other credentials for a cluster
+with at least one node
 - `:name` is the main name of this credentials set/the host this gets applied to
 - `:aliases` may be aliases for `name`" 
-  {:ppu-vhost s/Str
+  {:cluster-name s/Str
+   :node-urls [(s/one s/Str "main-url") s/Str]
+   :ppu-vhost s/Str
    :management {:user s/Str
-                :password s/Str
-                :url s/Str}
+                :password s/Str}
    (s/optional-key :shovel) {:user s/Str
-                             :password s/Str
-                             :password-hash s/Str} 
+                              :password s/Str
+                              :password-hash s/Str} 
    (s/optional-key :aliases) [s/Str]})

@@ -27,9 +27,9 @@ routing.generator
                :exchange-binding 5
                :queue-binding 6
                :policy 7
-               :federation-policy 8
-               :federation-upstream 9
-               :federation-upstream-set 10
+               :federation-upstream 8
+               :federation-upstream-set 9
+               :federation-policy 10
                :shovel 11
                :tracing 12}] 
     (order (:resource m))))
@@ -158,13 +158,69 @@ currently present within a rabbitmq instance."
       (io/apply-declaration! vhost {:resource :tracing :action :declare})
       (io/remove-declaration! vhost {:resource :tracing :action :declare}))))
 
+(defn set-big-bang-migration! [enabled? contracts credentials]
+  (with-credentials credentials
+    (let [credentials (assoc-in credentials [:management :url] "http://localhost:15673")
+          features (gen/construct-big-bang-migrations contracts credentials (fn [_]))
+          features (sort-by identity declaration-comparator features)
+          fun (if enabled? io/apply-declaration! io/remove-declaration!)]
+      (doseq [f features] (println f)
+        (println (fun (:ppu-vhost credentials) f))))))
+
+(defn set-queues-based-migration! [enabled? contracts credentials-old credentials-new]
+  (let [fun (if enabled? io/apply-declaration! io/remove-declaration!)
+        vh (:ppu-vhost credentials-old)]
+    (with-credentials credentials-old
+      (doseq [f [{:resource :federation-upstream 
+                  :vhost vh
+                  :name "new-cluster-upstream" 
+                  :uri (str "amqp://guest:guest@localhost:5673/" vh)}
+                 {:resource :federation-policy
+                  :vhost vh
+                  :federation-upstream-set "all"
+                  :name "new-cluster-migration-policy"
+                  :apply-to "queues"
+                  :pattern (str "^.*-q-.*$")}]]
+        (println (fun vh f) f)))
+    (with-credentials credentials-new
+      (doseq [f [{:resource :federation-upstream 
+                  :vhost vh
+                  :name "old-cluster-upstream" 
+                  :uri (str "amqp://guest:guest@localhost:5672/" vh)}
+                 {:resource :federation-policy
+                  :vhost vh
+                  :federation-upstream-set "all"
+                  :name "old-cluster-migration-policy"
+                  :apply-to "queues"
+                  :pattern (str "^.*-q-.*$")}]]
+        (println (fun vh f) f)))))
+
 (comment
+  (set-big-bang-migration! 
+    false 
+    @routing.contracts/contracts
+    @routing.routing-rest/management-api)
+  
+  (set-queues-based-migration!
+    true 
+    @routing.contracts/contracts
+    @routing.routing-rest/management-api
+    (assoc-in @routing.routing-rest/management-api [:management :url] "http://localhost:15673"))
+  
   (time (update-routing! 
-          @routing.contracts/contracts
           ;routing.contracts/empty-contracts
+          @routing.contracts/contracts
           @routing.routing-rest/management-api
-          create-all-separate-vhosts
-          ;create-all-single-vhost
+          ;create-all-separate-vhosts
+          create-all-single-vhost
+          ))
+  
+  (time (update-routing! 
+          ;routing.contracts/empty-contracts
+          @routing.contracts/contracts
+          @routing.routing-rest/management-api
+          ;create-all-separate-vhosts
+          create-all-single-vhost
           ))
 
   

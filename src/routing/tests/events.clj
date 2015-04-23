@@ -36,8 +36,10 @@
   (def consumer-conn (consume-all-messages! {:vhost "VH_ppu" :port 5672
                           :username "archiver" :password ""
                           :queue "archiver-q-0"}))
-  (send-a-message {:vhost "VH_ppu" :port 5672
-                   :username "scada" :password "scada"
+  (send-a-message {:vhost "VH_ppu" 
+                   :port 5672
+                   :username "scada" 
+                   :password "scada"
                    :exchange "scada-ex-write"
                    :routing-key "scada.data.ALL"})
   )

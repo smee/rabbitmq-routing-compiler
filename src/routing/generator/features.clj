@@ -226,7 +226,7 @@ Users have no permissions to change anything themselves."
                     :auto_delete false 
                     :arguments {:x-dead-letter-exchange "admin.dropped"}}})])) ; TODO x-dead-letter-exchange, see https://www.rabbitmq.com/dlx.html
 
-(deffeature construct-federations 
+(deffeature construct-internal-federations 
   "Federation based alternative of construct-internal-shovels"
   [contracts {mgmt :management, ppu-vhost :ppu-vhost} vhost-of]
   (for [{user :name ex :exchange} (vals (:users contracts)) 
@@ -594,3 +594,22 @@ where the message was stuck)."
    :pattern ""
    :definition {:ha-mode "all"}
    :apply-to "queues"})
+
+;;;;;;;;;;;;;;; update of clusters ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(deffeature construct-big-bang-migrations 
+  "Federation based cluster update to migrate users from one cluster to a new one."
+  [contracts {vhost :ppu-vhost} _]
+  (let [uup (str "gen-" vhost "-up") 
+        uups (str uup "-set")
+        exchanges (clojure.string/join "|" (->> contracts :users vals (map :exchange)))]
+    [{:resource :federation-upstream 
+      :vhost vhost
+      :name uup 
+      :uri "amqp://guest:guest@localhost:5673/VH_ppu"} ; FIXME make this a parameter
+     {:resource :federation-policy
+      :vhost vhost
+      :federation-upstream-set "all"
+      :name (str uups "-policy")
+      :apply-to "exchanges"
+      :pattern (str "^" exchanges "$")}]))
+
