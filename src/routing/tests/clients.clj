@@ -96,7 +96,7 @@
       (when sleep-time
         (Thread/sleep sleep-time))
       #_(infof "%10s: send %s" username (str msg))
-      (lb/publish ch exchange routing-key (str msg)))
+      (lb/publish ch exchange routing-key (str msg) {:persistent true}))
     (infof "closing producer %s" username)))
 
 (defn consume [{:keys [exchange routing-key queue username port] :as opts}
@@ -195,7 +195,7 @@
                    :port 5672
                    :routing-key "K.10.ALL"
                    }
-                  {:messages (range 1000000)}))
+                  {:messages (range 100000)}))
       c (future (consume
                   {:queue "UA-q-0"
                    :vhost "VH_ppu"
@@ -204,7 +204,7 @@
                    :password "UA"
                    :port 5672}
                   {:prefetch 100
-                   :message-count 1000000}))]
+                   :message-count 100000}))]
   @p
   @c))
     

@@ -67,16 +67,14 @@ routing.routing-rest
   [vhost {:keys [start-vhost 
                  start-exchange 
                  routing-key
-                 strategy]}]
+                 strategy
+                 simulation]}]
   :allowed-methods [:get]
   :available-media-types ["image/png"]
   :handle-ok (fn [ctx] 
                (let [generator-fn (generator/get-generator-fn strategy)
                      creds @management-api
-                     vhosts (if (string? vhost) [vhost] vhost)
-                     declarations (if (not-empty vhosts) 
-                                    (mapcat #(concat (io/fetch-routing % creds)
-                                                     (io/fetch-shovels % creds)) vhosts)
+                     declarations (if simulation 
                                     (mapcat #(map (fn [decl] (assoc decl :host (select-keys (meta %) [:name :aliases]))) 
                                                   (generator-fn % creds
                                                                 #_(-> creds
@@ -85,7 +83,10 @@ routing.routing-rest
                                             [@con/contracts
                                              ;con/remote-contracts
                                              ;con/demo-delegation
-                                             ]))] 
+                                             ])
+                                    (let [vhosts (map :name (io/fetch-vhosts creds))] 
+                                      (mapcat #(concat (io/fetch-routing % creds)
+                                                       (io/fetch-shovels % creds)) vhosts)))] 
                  (-> declarations
                    (viz/routing->graph {:start-vhost start-vhost 
                                         :start-exchange start-exchange 
@@ -160,15 +161,24 @@ routing.routing-rest
                             :handle-ok #(vector
                                           (build-entry-url (:request %) true "contracts")
                                           (build-entry-url (:request %) true "management")
-                                          (build-entry-url (:request %) true "routing.png"))))
+                                          (build-entry-url (:request %) true "routing-simulation.png")
+                                          (build-entry-url (:request %) true "routing-real.png"))))
       (ANY "/management" [] management-api-resource)
       (ANY "/contracts" [] contracts) 
-      (GET "/routing.png" [vhost start-vhost start-exchange routing-key strategy] 
+      (GET "/routing-real.png" [vhost start-vhost start-exchange routing-key strategy] 
            (rendering-resource vhost 
                                {:start-vhost start-vhost
                                 :start-exchange start-exchange
                                 :routing-key routing-key
-                                :strategy (keyword strategy)})))
+                                :strategy (keyword strategy)
+                                :simulation false}))
+      (GET "/routing-simulation.png" [vhost start-vhost start-exchange routing-key strategy] 
+           (rendering-resource vhost 
+                               {:start-vhost start-vhost
+                                :start-exchange start-exchange
+                                :routing-key routing-key
+                                :strategy (keyword strategy)
+                                :simulation true})))
     wrap-keyword-params
     wrap-json-params
     wrap-params
