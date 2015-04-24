@@ -135,7 +135,7 @@ routing.routing-rest
   :handle-ok (fn [_] (minus->underscore @management-api)))
 
 
-(defresource everything
+(defresource contracts
   :available-media-types ["application/json"]
   :allowed-methods [:post :get]
   :malformed? (fn [r]
@@ -158,11 +158,11 @@ routing.routing-rest
       (GET "/" [] (resource :allowed-methods [:get]
                             :available-media-types ["application/json"] 
                             :handle-ok #(vector
-                                          (build-entry-url (:request %) true "all")
+                                          (build-entry-url (:request %) true "contracts")
                                           (build-entry-url (:request %) true "management")
                                           (build-entry-url (:request %) true "routing.png"))))
       (ANY "/management" [] management-api-resource)
-      (ANY "/all" [] everything) 
+      (ANY "/contracts" [] contracts) 
       (GET "/routing.png" [vhost start-vhost start-exchange routing-key strategy] 
            (rendering-resource vhost 
                                {:start-vhost start-vhost

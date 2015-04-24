@@ -93,8 +93,9 @@
                     ch (lch/open conn)]
     (infof "producer %10s: switching to instance at port %d" username port)
     (doseq [msg messages]
-      (Thread/sleep 100)
-      (infof "%10s: send %s" username (str msg))
+      (when sleep-time
+        (Thread/sleep sleep-time))
+      #_(infof "%10s: send %s" username (str msg))
       (lb/publish ch exchange routing-key (str msg)))
     (infof "closing producer %s" username)))
 
@@ -105,12 +106,13 @@
     (infof "consumer %10s: switching to instance at port %d" username port)
     (let [count-down (java.util.concurrent.CountDownLatch. message-count)] 
       (lb/qos ch prefetch)
-      (lc/subscribe ch queue (fn [ch {tag :delivery-tag} body]
+      (lc/subscribe ch queue (fn [ch {tag :delivery-tag rk :routing-key} body]
                                (when (rmq/open? ch)
                                  (.countDown count-down)
                                  (lb/ack ch tag)
-                                 (infof "%10s: recv %s (%s)" username (String. body) tag)
-                                 (Thread/sleep sleep-time))) 
+                                 #_(infof "%10s: recv %s (%s)" username (String. body) rk)
+                                 (when sleep-time
+                                   (Thread/sleep sleep-time)))) 
                     {:auto-ack false
                      :arguments {"x-priority" 5}})
       (.await count-down)
@@ -183,4 +185,28 @@
              :switch-every 25
              :ports [5672 5673 5672 5673]}))
     
-  )
+  (time (let [p (future (produce
+                  {:exchange "K-ex-write"
+                   :queue "K-q-0"
+                   :vhost "VH_ppu"
+                   :host "localhost"
+                   :username "K"
+                   :password "K"
+                   :port 5672
+                   :routing-key "K.10.ALL"
+                   }
+                  {:messages (range 1000000)}))
+      c (future (consume
+                  {:queue "UA-q-0"
+                   :vhost "VH_ppu"
+                   :host "localhost"
+                   :username "UA"
+                   :password "UA"
+                   :port 5672}
+                  {:prefetch 100
+                   :message-count 1000000}))]
+  @p
+  @c))
+    
+    )
+
