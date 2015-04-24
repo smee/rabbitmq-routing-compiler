@@ -137,10 +137,17 @@ All routing keys have the following structure:
       :arguments {:routing_key (str user ".#") 
                   :arguments {}}}
      ; iterate all collections, create bindings for each access right
+     (for [{:keys [from to tag]} (vals covenants)]   
+       {:resource :exchange-binding 
+        :vhost vhost
+        :from (user-exchange-write-internal from) 
+        :to (user-exchange-read to)
+        :arguments {:routing_key (format "*.%s" tag) 
+                    :arguments {}}})
+     ; create specific bindings for all covenant collections
      (for [[ccollection-id cov-ids] collections, 
            cov-id cov-ids
-           :let [{:keys [from to tag]} (get covenants cov-id)]
-           :when (and (contains? users from) (contains? users to))]   
+           :let [{:keys [from to tag]} (get covenants cov-id)]]   
        {:resource :exchange-binding 
         :vhost vhost
         :from (user-exchange-write-internal from) 
@@ -209,14 +216,15 @@ Users have no permissions to change anything themselves."
         :let [vh (vhost-of user)]] 
     [(generate-private-resources-for user exchange vh)
      (generate-invalid-routing-exchange vh)
-     (for [[c-id queues] allocations, queue queues
+     (for [[c-id queues] allocations, 
+           queue queues
            :let [{:keys [from tag]} (get covenants c-id)
                  uerp (user-exchange-read user)]]  
        {:resource :queue-binding 
         :vhost vh
         :to queue 
         :from uerp
-        :arguments {:routing_key (format "%s.%s.*" from tag) 
+        :arguments {:routing_key (format "%s.%s.#" from tag) 
                     :arguments {}}})
      (for [queue queues] 
        {:resource :queue
@@ -225,46 +233,6 @@ Users have no permissions to change anything themselves."
                     :durable true 
                     :auto_delete false 
                     :arguments {:x-dead-letter-exchange "admin.dropped"}}})])) ; TODO x-dead-letter-exchange, see https://www.rabbitmq.com/dlx.html
-
-(deffeature construct-internal-federations 
-  "Federation based alternative of construct-internal-shovels"
-  [contracts {mgmt :management, ppu-vhost :ppu-vhost} vhost-of]
-  (for [{user :name ex :exchange} (vals (:users contracts)) 
-        :let [vh (vhost-of user)
-              uup (str "gen-" vh "-up") 
-              udo (str "gen-" vh "-down")
-              uups (str uup "-set")
-              udos (str udo "-set")
-              ex-r (user-exchange-read user)
-              ex-w ex]]
-    [{:resource :federation-upstream 
-      :vhost vh
-      :name uup 
-      :uri (format "amqp://%s:%s@/%s" (mgmt :user) (mgmt :password) ppu-vhost)}
-     {:resource :federation-upstream 
-      :vhost ppu-vhost
-      :name udo 
-      :uri (format "amqp://%s:%s@/%s" (mgmt :user) (mgmt :password) vh)}
-     {:resource :federation-upstream-set
-      :vhost vh
-      :name uups
-      :upstream uup
-      :exchange ex-r}
-     {:resource :federation-upstream-set
-      :vhost ppu-vhost
-      :name udos
-      :upstream udo
-      :exchange ex-w}
-     {:resource :federation-policy
-      :vhost ppu-vhost
-      :federation-upstream-set udos
-      :name (str udos "-policy")
-      :pattern (str "^" ex-w "$")}
-     {:resource :federation-policy
-      :federation-upstream-set uups
-      :name (str uups "-policy") 
-      :vhost vh
-      :pattern (str "^" ex-r "$")}]))
 
 (deffeature construct-internal-shovels 
   "TODO" 
@@ -321,21 +289,6 @@ Users have no permissions to change anything themselves."
       :from ex-r 
       :arguments {:routing_key "#" :arguments {}}}]))
 
-
-
-
-
-#_(deffeature construct-delegation-routing 
-  "Fully transparent elegation of covenants between platform users using routing-key rewriting shovels."
-  [{:keys [users collections covenants] :as contracts} {ppu-vhost :ppu-vhost} vhost-of]
-  (for [[user-name {ds :delegation :as user}] users,
-        [delegating-user cov-ids] ds,
-        cov-id cov-ids
-        :when cov-id
-        :let [vh (vhost-of user-name)
-              ex-w (:exchange user)
-              {:keys [from to tag]} (get covenants cov-id)]]
-    )) 
 
 ;;;;;;;;;;;;;;;; Tracing, Poor mans auditing.... ;;;;;;;;;;;;;;;;
 (defn- tracing-in-vhost [queue-name vhost]

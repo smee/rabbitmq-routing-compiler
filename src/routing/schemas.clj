@@ -18,10 +18,6 @@ routing.schemas
                   :exchange s/Str
                   :delegation #{+CovenantId+}})
 
-(def +RemoteUser+ {:aliases #{+UserName+}
-                   :remote-uri s/Str
-                   :exchange s/Str
-                   :queue s/Str})
 
 (def +PlatformUser+ {:name +UserName+
                      :password s/Str
@@ -29,7 +25,6 @@ routing.schemas
                      :exchange s/Str
                      :allocations +Allocations+
                      ;a user may represent multiple upstream users (à la transparent proxy)
-                     (s/optional-key :remote) +RemoteUser+ 
                      (s/optional-key :localusers) {+UserName+ +LocalUser+}
                      (s/optional-key :delegation) {+UserName+ #{+CovenantId+}}
                      (s/optional-key :transparent-delegation) {+CovenantId+ +CovenantId+}}) 

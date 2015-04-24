@@ -15,44 +15,6 @@
 
 (def merge-contracts (partial org.clojars.smee.map/deep-merge-with into))
 
-(defn generate-routing-backend-partial-contract ;;FIXME
-  "Create contract data structures for a backend service. The result can be merged into the
-`+Contracts+` data structure. Since the result does not contain user specifications nor exchanges, 
-it can only be validated against
-`(dissoc +Contracts+ :users :exchanges)`"
-  [users {:keys [backend-user queue-name tag]}]
-  (->> users
-    (map-indexed (fn [idx user]
-                   (let [uuid (str (java.util.UUID/randomUUID))
-                         uuid-answer (str (java.util.UUID/randomUUID))] 
-                     {:covenants {uuid {:from user
-                                        :to backend-user
-                                        :tag tag}
-                                  uuid-answer {:from backend-user
-                                               :to user
-                                               :tag tag}}
-                      :collections {user #{uuid-answer}
-                                    "ALL" #{uuid-answer uuid}}
-                      :users {user {:queues #{queue-name}
-                                    :allocations {uuid-answer #{queue-name}}}
-                              backend-user {:queues #{queue-name}
-                                            :allocations {uuid #{queue-name}}}}})))
-    (reduce merge-contracts)))
-
-(comment 
-  (clojure.pprint/pprint
-    ;; merge existing contracts, new platform user, and access to routing backend for user 'analysis'
-    (merge-contracts @contracts 
-                     {:users {"platform" {:name "platform" 
-                                          :password (pw "platform")
-                                          :exchange "platform-ex-write" 
-                                          :queues #{"control"}}}}
-                     (generate-routing-backend-partial-contract 
-                       ["analysis"] 
-                       {:backend-user "platform"
-                        :queue-name "control"
-                        :tag "control.routing"})))) 
-
 (defn enumerate-routing-keys 
   "Generate all valid routing keys from contracts data."
   ([contracts] (enumerate-routing-keys contracts nil))
@@ -132,31 +94,12 @@ it can only be validated against
                                                                :queues #{"scada-q-0"}
                                                                :delegation #{"1" "3"}}}}}})) 
 
-(def demo-remote-contracts "proxy to remote rabbitmq instance using a similar routing-compiler" 
-  (merge-contracts demo-contracts
-                   {:users {"proxyuser" {:name "proxyuser" 
-                                         :password (pw "proxyuser")
-                                         :queues #{"proxyuser-q-0"}
-                                         :exchange "proxyuser-ex-write" 
-                                         :allocations {"remote-2" #{"proxyuser-q-0"}}
-                                         :remote {:aliases #{"foo" "bar"} ; platform users of remote RabbitMQ instance
-                                                  :remote-uri "amqp://USERNAME:PASSWORD@REMOTE-HOST:PORT/VHOST"
-                                                  :exchange "USERNAME-ex-write" 
-                                                  :queue "USERNAME-q-0"}}
-                            "scada" {:allocations {"remote-1" #{"scada-q-0"}}}}
-                    :covenants {"remote-1" {:from "foo" 
-                                            :to "scada" 
-                                            :tag "diagnosis"}
-                                "remote-2" {:from "scada" 
-                                            :to "bar" 
-                                            :tag "storedata"}}
-                    :collections {"ALL" #{"remote-1" "remote-2"}}}))
 
 (def demo-direct-delegation "delegation of covenants between platform users"
   (merge-contracts demo-contracts
-                   {:users {"analysis" {:delegation {"archiver" #{"quali-1" "quali-2"}}
-                                        :allocations {"quali-1" #{"analysis-q-for-archiver"}}
-                                        :queues #{"analysis-q-for-archiver"}}}
+                   {:users {"analysis" {:allocations {"quali-1" #{"analysis-q-for-archiver"}}
+                                        :queues #{"analysis-q-for-archiver"}}
+                            "archiver" {:delegation {"analysis" #{"quali-1" "quali-2"}}}}
                     :covenants {"quali-1" {:from "scada" :to "archiver" :tag "testQuality"}
                                 "quali-2" {:from "archiver" :to "scada" :tag "qualityResults"}}
                     :collections {"ALL" #{"quali-1" "quali-2"}}}))
@@ -194,7 +137,7 @@ one covenant to messages sent via another covenant."
                "UA->DA" {:from "UA" 
                          :to "DA" 
                          :tag "10-transformed"}}
-   :collections {"ALL" #{"K->DA" "DA->K" "DA->UA" "UA->DA"}}})
+   :collections {}})
 
 
 ;;;;;;;;;;;;;;;; contract related public API ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

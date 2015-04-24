@@ -60,10 +60,18 @@ may delegate covenants to its local users."
      ; for every covenant in every covenant-collection he is allowed to use
      (for [cov-id delegation, 
            [cov-coll-name cov-coll-ids] collections
-           :when (contains? cov-coll-ids cov-id)]
+           :when (contains? cov-coll-ids cov-id)
+           :let [tag (get-in covenants [cov-id :tag])]]
        {:resource :exchange-binding 
         :vhost vh
         :from exchange 
         :to pf-user-exchange 
-        :arguments {:routing_key (format "%s.%s.%s" pf-user (get-in covenants [cov-id :tag]) cov-coll-name) :arguments {}}})]))
+        :arguments {:routing_key (format "%s.%s.%s" pf-user tag cov-coll-name) :arguments {}}})
+     (for [cov-id delegation, 
+           :let [tag (get-in covenants [cov-id :tag])]]
+       {:resource :exchange-binding 
+        :vhost vh
+        :from exchange 
+        :to pf-user-exchange 
+        :arguments {:routing_key (format "%s.%s" pf-user tag) :arguments {}}})]))
 

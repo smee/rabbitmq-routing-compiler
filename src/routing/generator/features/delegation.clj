@@ -10,50 +10,45 @@
   [{users :users} user-name]
   (cond 
     (users user-name) user-name
-    ((set (mapcat (comp (partial map :name) vals :localusers) (vals users))) user-name) user-name
-    :else-must-be-remote (some #(when (get-in % [:remote :aliases user-name]) (:name %)) (vals users))))
+    ((set (mapcat (comp (partial map :name) vals :localusers) (vals users))) user-name) user-name))
 
 (deffeature construct-delegation-routing 
-  "Delegation of covenants between local, platform and remote users."
-  [{:keys [users collections covenants] :as contracts} {ppu-vhost :ppu-vhost} vhost-of]
-  (for [[user-name {ds :delegation :as user}] users,
-        [delegating-user cov-ids] ds,
-        cov-id cov-ids
-        :when cov-id
-        :let [vh (vhost-of user-name)
-              ex-w (:exchange user)
-              {:keys [from to tag]} (get covenants cov-id)]]
-    [; bindings for delegated sending covenants
-     (if (= from delegating-user) 
-       (for [[cc-name cov-coll] collections 
-             :when (contains? cov-coll cov-id)
-             :let [to (user-alias contracts to)]] 
-         {:resource :exchange-binding 
-          :vhost ppu-vhost
-          :from (:exchange user) 
-          :to (get-in users [delegating-user :exchange]) 
-          :arguments {:routing_key (format "%s.%s.%s" delegating-user tag cc-name) 
-                      :arguments {}}})
-       ; else: we receive from this delegated covenant
-       (for [[cc-name cov-coll] collections 
-             :when (contains? cov-coll cov-id)
-             :let [from' (user-alias contracts from)]] 
-         ; TODO clean this up: dependencies between features
-         ; if this is a proxy user, we don't know which covenant collection might have been used
-         ; but since we got the message, we are the recipient. No need to restrict it further
-         (if (not= from from') ;remote user
-           {:resource :exchange-binding 
-            :vhost ppu-vhost
-            :from (get-in users [from' :exchange]) ;(user-exchange-write-internal from') 
-            :to (user-exchange-read user-name) 
-            :arguments {:routing_key (format "%s.%s.*" from tag) 
-                        :arguments {}}}
-           {:resource :exchange-binding 
-            :vhost ppu-vhost
-            :from (user-exchange-write-internal from') 
-            :to (user-exchange-read user-name) 
-            :arguments {:routing_key (format "*.%s.%s" tag cc-name) 
-                        :arguments {}}})))]))
+  "Delegation of covenants between local and platform users"
+  [{:keys [users collections covenants] :as contracts} 
+   {ppu-vhost :ppu-vhost} 
+   vhost-of]
+  (for [[delegating-user {ds :delegation ex-w :exchange}] users,
+        [delegating-to-user cov-ids] ds,
+        cov-id-to-delegate cov-ids
+        :let [{:keys [from to tag]} (get covenants cov-id-to-delegate)]]
+    
+    (if (= from delegating-user)
+      ; bindings for delegated sending covenants
+      [{:resource :exchange-binding 
+        :vhost ppu-vhost
+        :from (-> delegating-to-user users :exchange) 
+        :to ex-w 
+        :arguments {:routing_key (format "%s.%s.*" delegating-user tag) 
+                    :arguments {}}}
+       {:resource :exchange-binding 
+        :vhost ppu-vhost
+        :from (-> delegating-to-user users :exchange) 
+        :to ex-w 
+        :arguments {:routing_key (format "%s.%s" delegating-user tag) 
+                    :arguments {}}}]
+      ; bindings for delegated receiving convenants
+    [{:resource :exchange-binding 
+      :vhost ppu-vhost
+      :from (user-exchange-write-internal from) 
+      :to (user-exchange-read delegating-to-user) 
+      :arguments {:routing_key (format "%s.%s.*" from tag) 
+                  :arguments {}}}
+     {:resource :exchange-binding 
+      :vhost ppu-vhost
+      :from (user-exchange-write-internal from) 
+      :to (user-exchange-read delegating-to-user) 
+      :arguments {:routing_key (format "%s.%s" from tag) 
+                  :arguments {}}}])))
 
 (deffeature construct-transparent-delegation-routing
   "Transparent delegation of covenants. Uses shovels to rename routing keys so
@@ -69,25 +64,21 @@ is a subcontractor."
               vh-from (vhost-of cf-from)
               vh-to (vhost-of ct-to)
               ex-w-from (-> cf-from users :exchange)
-              _ (assert (= cf-to ct-from))]]    
+              queue (format "delegation_'%s'->'%s'" cov-from cov-to)]]    
     
-    (for [[cc-name cov-coll] collections 
-           :when (contains? cov-coll cov-to)
-           :let [queue (format "delegation_'%s'->'%s'" cov-from cov-to)]] 
-      [{:resource :queue
+    [{:resource :queue
         :vhost vh-from
         :arguments {:name queue 
                     :durable true 
                     :auto_delete false 
                     :arguments {:x-dead-letter-exchange "admin.dropped"}}}
-       {:resource :queue-binding 
+     {:resource :queue-binding 
         :vhost vh-from
         :to queue 
         :from ex-w-from
-        :arguments {:routing_key (format "%s.%s.*" cf-from cf-tag) 
-                    :arguments {}}}
-       ;; FIXME this means one shovel per covenant collection!
-       {:resource :shovel
+        :arguments {:routing_key (format "%s.%s.#" cf-from cf-tag) 
+                    :arguments {}}}       
+     {:resource :shovel
         :vhost vh-to
         :name queue 
         :src-uri (format "amqp://%s:%s@/%s" shovel-user shovel-password vh-from)
@@ -98,4 +89,4 @@ is a subcontractor."
         :reconnect-delay 1
         :add-forward-headers false 
         :ack-mode "on-publish"
-        :dest-exchange-key (format "%s.%s.%s" delegating-user ct-tag cc-name)}])))
+        :dest-exchange-key (format "%s.%s" delegating-user ct-tag)}]))

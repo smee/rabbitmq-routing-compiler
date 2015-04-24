@@ -75,15 +75,7 @@ routing.routing-rest
                (let [generator-fn (generator/get-generator-fn strategy)
                      creds @management-api
                      declarations (if simulation 
-                                    (mapcat #(map (fn [decl] (assoc decl :host (select-keys (meta %) [:name :aliases]))) 
-                                                  (generator-fn % creds
-                                                                #_(-> creds
-                                                                  (merge (meta %))
-                                                                  (select-keys (keys +Credentials+)))))
-                                            [@con/contracts
-                                             ;con/remote-contracts
-                                             ;con/demo-delegation
-                                             ])
+                                    (generator-fn @con/contracts creds)
                                     (let [vhosts (map :name (io/fetch-vhosts creds))] 
                                       (mapcat #(concat (io/fetch-routing % creds)
                                                        (io/fetch-shovels % creds)) vhosts)))] 

@@ -8,8 +8,7 @@ routing.generator
              [rabbit-password :refer [rabbit-password-hash]]]
             [routing.generator.features
              [delegation :as de]
-             [local-users :as lu]
-             [remote-proxy :as rp]] 
+             [local-users :as lu]] 
             [clojure.set :refer [difference]]
             [clojure.tools.logging :as log :refer [info infof debugf debug]]
             [schema.core :as s])
@@ -94,7 +93,6 @@ and the credentials."
                 gen/construct-admin-declarations 
                 gen/construct-admin-permissions-for-vhosts
                 gen/construct-routing-key-only
-                rp/construct-alias-routing 
                 de/construct-delegation-routing
                 de/construct-transparent-delegation-routing
                 gen/construct-tracing
@@ -117,7 +115,6 @@ and the credentials."
            lu/construct-localuser-covenants
            gen/construct-admin-declarations 
            gen/construct-routing-key-only
-           rp/construct-alias-routing 
            de/construct-delegation-routing
            de/construct-transparent-delegation-routing
            gen/construct-tracing
@@ -224,8 +221,10 @@ currently present within a rabbitmq instance."
   
   (time (update-routing! 
           ;routing.contracts/empty-contracts
-          @routing.contracts/contracts
+          ;@routing.contracts/contracts
+          routing.contracts/demo-transparent-delegation
           @routing.routing-rest/management-api
+;          (assoc @routing.routing-rest/management-api :node-urls ["http://localhost:15673"])
           ;create-all-separate-vhosts
           create-all-single-vhost
           ))

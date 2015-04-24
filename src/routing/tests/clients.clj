@@ -95,7 +95,7 @@
     (doseq [msg messages]
       (when sleep-time
         (Thread/sleep sleep-time))
-      #_(infof "%10s: send %s" username (str msg))
+      (infof "%10s: send %s" username (str msg))
       (lb/publish ch exchange routing-key (str msg) {:persistent true}))
     (infof "closing producer %s" username)))
 
@@ -108,11 +108,11 @@
       (lb/qos ch prefetch)
       (lc/subscribe ch queue (fn [ch {tag :delivery-tag rk :routing-key} body]
                                (when (rmq/open? ch)
-                                 (.countDown count-down)
                                  (lb/ack ch tag)
-                                 #_(infof "%10s: recv %s (%s)" username (String. body) rk)
+                                 (infof "%10s: recv %s (%s)" username (String. body) rk)
                                  (when sleep-time
-                                   (Thread/sleep sleep-time)))) 
+                                   (Thread/sleep sleep-time))
+                                 (.countDown count-down))) 
                     {:auto-ack false
                      :arguments {"x-priority" 5}})
       (.await count-down)
@@ -195,7 +195,7 @@
                    :port 5672
                    :routing-key "K.10.ALL"
                    }
-                  {:messages (range 100000)}))
+                  {:messages (range 100)}))
       c (future (consume
                   {:queue "UA-q-0"
                    :vhost "VH_ppu"
@@ -204,7 +204,7 @@
                    :password "UA"
                    :port 5672}
                   {:prefetch 100
-                   :message-count 100000}))]
+                   :message-count 100}))]
   @p
   @c))
     
