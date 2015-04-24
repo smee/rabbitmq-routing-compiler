@@ -114,7 +114,15 @@ used by `construct-routing`."
          :definition d}))))
 
 
-(def ^:private shovel-keys [:src-uri :src-queue :dest-uri :dest-exchange :prefetch-count :reconnect-delay :add-forward-headers :ack-mode])
+(def ^:private shovel-keys [:src-uri 
+                            :src-queue 
+                            :dest-uri 
+                            :dest-exchange 
+                            :dest-exchange-key
+                            :prefetch-count 
+                            :reconnect-delay 
+                            :add-forward-headers 
+                            :ack-mode])
 
 (defn fetch-shovels
   [vhost creds]

@@ -67,6 +67,7 @@ with a routing key `routing-key`."
           ; TODO fanout and headers exchange
           ; TODO alternate exchange if no other routing occurs
           ; TODO DLX for queues
+          ; TODO shovels may rename routing-key
           (recur (conj visited node) 
                  (apply conj hull node real-edges) 
                  (if potential-edges 
@@ -74,6 +75,12 @@ with a routing key `routing-key`."
                    to-visit)))))))
 
 ;;;;;;;;;;;;;; graphviz ;;;;;;;;;;;;;;;;;;;;;;;;;
+(defn- escape-label [^String lbl]
+  (-> lbl
+    (.replaceAll ">" "\\\\>")
+    (.replaceAll "<" "\\\\<")
+    (.replaceAll " " "\\\\ ")))
+
 (defn obj->color [obj] 
   (str "#" (subs (Integer/toString (hash obj) 16) 0 6)))
 
@@ -87,7 +94,7 @@ with a routing key `routing-key`."
 (defn queue-style [decl]
   {:fillcolor "red" ;(obj->color (:vhost decl))
    :shape "record"
-   :label [[(name-of decl) "" "" ""]] 
+   :label [[(escape-label (name-of decl)) "" "" ""]] 
    :fontcolor "white"
    :style :filled})
 
@@ -101,12 +108,12 @@ with a routing key `routing-key`."
    :color "red"
    :label ""})
 
-(defn shovel-style [_]
+(defn shovel-style [decl]
   {:color "red" ;"#FFC0C0" ;light red
    :fontcolor "red" ;"#FFC0C0"
    :style "dashed"
    :arrowhead "oboxobox"
-   :label "";(:name decl); as soon as there is a label, dot dies >:(
+   :label (:name decl)
    })
 
 (defn binding-style [decl]

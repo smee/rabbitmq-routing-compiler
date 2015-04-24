@@ -321,147 +321,12 @@ Users have no permissions to change anything themselves."
       :from ex-r 
       :arguments {:routing_key "#" :arguments {}}}]))
 
-;;;;;;;;;;;;;;;;; Upstream RabbitMQ Instances - Alias for remote users ;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn- user-alias 
-  "If a username is represented by some proxy user
-  this function finds the correct name. If there is a platform or local user
-  with the name `user-name`, `user-name` will get returned."
-  [{users :users} user-name]
-  (cond 
-    (users user-name) user-name
-    ((set (mapcat (comp (partial map :name) vals :localusers) (vals users))) user-name) user-name
-    :else-must-be-remote (some #(when (get-in % [:remote :aliases user-name]) (:name %)) (vals users))))
-
-(deffeature construct-alias-routing
-  "Construct routing for all transparent remote users"
-  [{:keys [users covenants collections] :as contracts} {ppu-vhost :ppu-vhost} vhost-of]
-  (for [{remote-user :name, ex :exchange, queues :queues, local-pw :password, {aliases :aliases :as remote} :remote} (vals users), 
-        alias-user aliases
-        :when alias-user
-        :let [vhost (vhost-of remote-user)
-              local-uri (format "amqp://%s:%s@/%s" remote-user local-pw vhost)]] 
-    [; shovel TO the remote rabbitmq
-     {:resource :shovel
-      :vhost vhost
-      :name (str vhost "-> remote" )
-      :src-uri local-uri
-      :src-queue (first queues);; FIXME are we sure there is just one? 
-      :dest-uri (:remote-uri remote) 
-      :dest-exchange (:exchange remote) 
-      :prefetch-count 100
-      :reconnect-delay 1
-      :add-forward-headers false 
-      :ack-mode "on-publish"}
-     ; shovel FROM the remote rabbitmq
-     {:resource :shovel
-      :vhost vhost
-      :name (str  "remote ->" vhost)
-      :src-uri (:remote-uri remote)
-      :src-queue (:queue remote) 
-      :dest-uri local-uri   
-      :dest-exchange ex 
-      :prefetch-count 100
-      :reconnect-delay 1
-      :add-forward-headers false 
-      :ack-mode "on-publish"}
-     ; bindings within ppu-vhost from remote users via this proxy user
-     (for [[ccollection-id cov-ids] collections, 
-           cov-id cov-ids
-           :let [{:keys [from to tag]} (get covenants cov-id)]
-           :when (contains? aliases from)
-           :let [from-remote remote-user]]  
-       [{:resource :exchange-binding
-         :vhost ppu-vhost
-         :from ex;(user-exchange-write-internal from-remote) 
-         :to (user-exchange-read to)
-         ; we do not know which covenant collection might have been defined upstream.
-         ; but it doesn't matter: at this point we already know that the message is for use
-         ; no point in further filtering recipients
-         :arguments {:routing_key (format "%s.%s.*" from tag) :arguments {}}}])
-     ; or from platform users via this proxy user to remote users
-     (for [[ccollection-id cov-ids] collections, 
-           cov-id cov-ids
-           :let [{:keys [from to tag]} (get covenants cov-id)]
-           :when (contains? aliases to)
-           :let [to remote-user]]  
-       {:resource :exchange-binding 
-        :vhost ppu-vhost
-        :from (user-exchange-write-internal from) 
-        :to (user-exchange-read to)
-        :arguments {:routing_key (format "*.%s.%s" tag ccollection-id) 
-                    :arguments {}}})]))
-
-;;;;;;;;;;;;;;; Local users ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn- find-pf-user-for-local [users local-user-name]
-  (some (fn [[_ pf-user]]
-          (when (get-in pf-user [:localusers local-user-name])
-            pf-user)) users))
-
-(deffeature construct-localuser-covenants 
-  "localuser may have convenant with another local user. In this case (assuming they are both
-localusers of the same platform user), we can directly bind from the sender's exchange
-to the allocated queue."
-  [{:keys [users collections covenants]} _ vhost-of]  
-  (let [locals-per-pf-user (map (comp set keys :localusers) (vals users))] 
-    (for [[cov-id {:keys [from to tag]}] covenants 
-          :when (some #(and (% from) (% to)) locals-per-pf-user)
-          :let [pf-user (find-pf-user-for-local users to)
-                local-user-exchange (get-in pf-user [:localusers from :exchange])
-                queues (get-in pf-user [:allocations cov-id])]]
-      (for [q queues]
-        {:resource :queue-binding 
-         :vhost (vhost-of (:name pf-user)) 
-         :from  local-user-exchange
-         :to q 
-         :arguments {:routing_key (format "%s.%s.*" from tag) :arguments {}}}))))
-
-(deffeature construct-localusers 
-  "Construct local users associated with a toplevel platform user. A platform user
-may delegate covenants to its local users."
-  [{:keys [users collections covenants]} _ vhost-of] 
-  (for [[pf-user {lu :localusers pf-user-exchange :exchange}] users,
-        {:keys [name password exchange queues delegation]} (vals lu),
-        :let [vh (vhost-of pf-user)]]
-    
-    [; create local user
-     {:resource :user 
-      :name name 
-      :password_hash password 
-      :tags "generated"}
-     ; localuser has his own writable exchange
-     {:resource :exchange
-      :vhost vh
-      :arguments {:name exchange 
-                  :type "topic" 
-                  :internal false 
-                  :durable true 
-                  :auto_delete false 
-                  :arguments {:alternate-exchange invalid_routing_key}}}
-     ; localuser may write to his exchange, read specific queues
-     {:resource :permission 
-      :vhost vh
-      :user name
-      :configure "^$" 
-      :write exchange
-      :read (join "|" queues)}
-     ; localuser has bindings from his private exchange to its platform user's exchange
-     ; for every covenant in every covenant-collection he is allowed to use
-     (for [cov-id delegation, 
-           [cov-coll-name cov-coll-ids] collections
-           :when (contains? cov-coll-ids cov-id)]
-       {:resource :exchange-binding 
-        :vhost vh
-        :from exchange 
-        :to pf-user-exchange 
-        :arguments {:routing_key (format "%s.%s.%s" pf-user (get-in covenants [cov-id :tag]) cov-coll-name) :arguments {}}})]))
 
 
-;;;;;;;;;; Delegation ;;;;;;;;;;;;;;;;;;;;;;;
 
-(deffeature construct-delegation-routing 
-  "Delegation of covenants between local platform users."
+
+#_(deffeature construct-delegation-routing 
+  "Fully transparent elegation of covenants between platform users using routing-key rewriting shovels."
   [{:keys [users collections covenants] :as contracts} {ppu-vhost :ppu-vhost} vhost-of]
   (for [[user-name {ds :delegation :as user}] users,
         [delegating-user cov-ids] ds,
@@ -470,37 +335,7 @@ may delegate covenants to its local users."
         :let [vh (vhost-of user-name)
               ex-w (:exchange user)
               {:keys [from to tag]} (get covenants cov-id)]]
-    [; bindings for delegated sending covenants
-     (if (= from delegating-user) 
-       (for [[cc-name cov-coll] collections 
-             :when (contains? cov-coll cov-id)
-             :let [to (user-alias contracts to)]] 
-         {:resource :exchange-binding 
-          :vhost ppu-vhost
-          :from (:exchange user) 
-          :to (get-in users [delegating-user :exchange]) 
-          :arguments {:routing_key (format "%s.%s.%s" delegating-user tag cc-name) 
-                      :arguments {}}})
-       ; else: we receive from this delegated covenant
-       (for [[cc-name cov-coll] collections 
-             :when (contains? cov-coll cov-id)
-             :let [from' (user-alias contracts from)]] 
-         ; TODO clean this up: dependencies between features
-         ; if this is a proxy user, we don't know which covenant collection might have been used
-         ; but since we got the message, we are the recipient. No need to restrict it further
-         (if (not= from from') ;remote user
-           {:resource :exchange-binding 
-            :vhost ppu-vhost
-            :from (get-in users [from' :exchange]) ;(user-exchange-write-internal from') 
-            :to (user-exchange-read user-name) 
-            :arguments {:routing_key (format "%s.%s.*" from tag) 
-                        :arguments {}}}
-           {:resource :exchange-binding 
-            :vhost ppu-vhost
-            :from (user-exchange-write-internal from') 
-            :to (user-exchange-read user-name) 
-            :arguments {:routing_key (format "*.%s.%s" tag cc-name) 
-                        :arguments {}}})))]))
+    )) 
 
 ;;;;;;;;;;;;;;;; Tracing, Poor mans auditing.... ;;;;;;;;;;;;;;;;
 (defn- tracing-in-vhost [queue-name vhost]

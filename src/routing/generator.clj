@@ -6,6 +6,10 @@ routing.generator
              [features :as gen]
              [io :as io :refer [with-credentials]]
              [rabbit-password :refer [rabbit-password-hash]]]
+            [routing.generator.features
+             [delegation :as de]
+             [local-users :as lu]
+             [remote-proxy :as rp]] 
             [clojure.set :refer [difference]]
             [clojure.tools.logging :as log :refer [info infof debugf debug]]
             [schema.core :as s])
@@ -85,13 +89,14 @@ and the credentials."
                 gen/construct-user-vhosts
                 gen/construct-permissions
                 gen/construct-private-queue-bindings
-                gen/construct-localusers
-                gen/construct-localuser-covenants                
+                lu/construct-localusers
+                lu/construct-localuser-covenants                
                 gen/construct-admin-declarations 
                 gen/construct-admin-permissions-for-vhosts
                 gen/construct-routing-key-only
-                gen/construct-alias-routing 
-                gen/construct-delegation-routing
+                rp/construct-alias-routing 
+                de/construct-delegation-routing
+                de/construct-transparent-delegation-routing
                 gen/construct-tracing
                 gen/construct-unroutable 
                 gen/construct-internal-shovel-user
@@ -108,14 +113,16 @@ and the credentials."
     ((juxt gen/construct-users
            gen/construct-permissions
            gen/construct-private-queue-bindings
-           gen/construct-localusers
-           gen/construct-localuser-covenants
+           lu/construct-localusers
+           lu/construct-localuser-covenants
            gen/construct-admin-declarations 
            gen/construct-routing-key-only
-           gen/construct-alias-routing 
-           gen/construct-delegation-routing
+           rp/construct-alias-routing 
+           de/construct-delegation-routing
+           de/construct-transparent-delegation-routing
            gen/construct-tracing
            gen/construct-unroutable
+           gen/construct-internal-shovel-user
            gen/construct-high-availability-for-queues)
       contracts credentials (constantly (:ppu-vhost credentials)))))
 

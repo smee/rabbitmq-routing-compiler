@@ -31,7 +31,8 @@ routing.schemas
                      ;a user may represent multiple upstream users (à la transparent proxy)
                      (s/optional-key :remote) +RemoteUser+ 
                      (s/optional-key :localusers) {+UserName+ +LocalUser+}
-                     (s/optional-key :delegation) {+UserName+ #{+CovenantId+}}}) 
+                     (s/optional-key :delegation) {+UserName+ #{+CovenantId+}}
+                     (s/optional-key :transparent-delegation) {+CovenantId+ +CovenantId+}}) 
 
 (def +Covenant+ {:from s/Str
                  :to s/Str

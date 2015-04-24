@@ -152,7 +152,7 @@ it can only be validated against
                                             :tag "storedata"}}
                     :collections {"ALL" #{"remote-1" "remote-2"}}}))
 
-(def demo-delegation "delegation of covenants between platform users"
+(def demo-direct-delegation "delegation of covenants between platform users"
   (merge-contracts demo-contracts
                    {:users {"analysis" {:delegation {"archiver" #{"quali-1" "quali-2"}}
                                         :allocations {"quali-1" #{"analysis-q-for-archiver"}}
@@ -160,6 +160,42 @@ it can only be validated against
                     :covenants {"quali-1" {:from "scada" :to "archiver" :tag "testQuality"}
                                 "quali-2" {:from "archiver" :to "scada" :tag "qualityResults"}}
                     :collections {"ALL" #{"quali-1" "quali-2"}}}))
+
+(def demo-transparent-delegation 
+  "Delegate rights/duties transparently for the recipient. Maps messages sent via
+one covenant to messages sent via another covenant."
+  {:users {"DA" {:name "DA" 
+                 :password (pw "DA")
+                 :queues #{"DA-q-0" "DA-q-1"}
+                 :exchange "DA-ex-write"
+                 :allocations {"K->DA" #{"DA-q-0"}
+                               "UA->DA" #{"DA-q-1"}}
+                 :transparent-delegation {"K->DA" "DA->UA"
+                                          "UA->DA" "DA->K"}}
+           "UA" {:name "UA" 
+                 :password (pw "UA")
+                 :queues #{"UA-q-0"}
+                 :exchange "UA-ex-write"
+                 :allocations {"DA->UA" #{"UA-q-0"}}}
+           "K" {:name "K" 
+                :password (pw "K")
+                :queues #{"K-q-0"}
+                :exchange "K-ex-write"
+                :allocations {"DA->K" #{"K-q-0"}}}}
+   :covenants {"K->DA" {:from "K" 
+                        :to "DA" 
+                        :tag "10"}
+               "DA->K" {:from "DA" 
+                        :to "K" 
+                        :tag "20"}
+               "DA->UA" {:from "DA" 
+                         :to "UA" 
+                         :tag "10"}
+               "UA->DA" {:from "UA" 
+                         :to "DA" 
+                         :tag "10-transformed"}}
+   :collections {"ALL" #{"K->DA" "DA->K" "DA->UA" "UA->DA"}}})
+
 
 ;;;;;;;;;;;;;;;; contract related public API ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defonce contracts (atom demo-contracts))
