@@ -177,8 +177,10 @@ All routing keys have the following structure:
   [{:keys [users]} {:keys [shovel ppu-vhost]} vhost-of] 
   {:resource :user
    :name (shovel :user) 
-   :password_hash (shovel :password-hash) 
-   :tags "generated"}
+   :password_hash (shovel :password-hash)
+   ; tag 'impersonator' means this user is allowed to use fake 'user_id' headers,
+   ; it can impersonate other users
+   :tags "generated, impersonator"}
   (for [vhost (cons ppu-vhost (map vhost-of (keys users)))] 
     {:resource :permission 
      :vhost vhost
@@ -253,7 +255,8 @@ Users have no permissions to change anything themselves."
       :dest-exchange ex-r 
       :prefetch-count 100
       :reconnect-delay 1
-      :add-forward-headers false 
+      :add-forward-headers false
+      :publish-properties {:user_id user}
       :ack-mode "on-publish"}
      {:resource :shovel
       :vhost vh
@@ -265,6 +268,7 @@ Users have no permissions to change anything themselves."
       :prefetch-count 100
       :reconnect-delay 1
       :add-forward-headers false 
+      :publish-properties {:user_id user}
       :ack-mode "on-publish"}
      {:resource :queue
       :vhost vh
@@ -368,7 +372,8 @@ where the message was stuck)."
       :dest-exchange invalid_routing_key 
       :prefetch-count 100
       :reconnect-delay 1
-      :add-forward-headers true 
+      :add-forward-headers true
+      :publish-properties {:user_id user}
       :ack-mode "on-publish"}]) 
   ; add queue for all non-routable messages in vhost `ppu-vhost`
   (construct-unroutable contracts credentials vhost-of))

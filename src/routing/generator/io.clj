@@ -122,6 +122,7 @@ used by `construct-routing`."
                             :prefetch-count 
                             :reconnect-delay 
                             :add-forward-headers 
+                            :publish-properties
                             :ack-mode])
 
 (defn fetch-shovels

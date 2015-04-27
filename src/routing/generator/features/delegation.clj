@@ -89,4 +89,5 @@ is a subcontractor."
         :reconnect-delay 1
         :add-forward-headers false 
         :ack-mode "on-publish"
+        :publish-properties {:user_id delegating-user}; works only if the shovel user has tag 'impersonator' 
         :dest-exchange-key (format "%s.%s" delegating-user ct-tag)}]))

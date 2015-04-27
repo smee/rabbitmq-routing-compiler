@@ -96,7 +96,7 @@
       (when sleep-time
         (Thread/sleep sleep-time))
       (infof "%10s: send %s" username (str msg))
-      (lb/publish ch exchange routing-key (str msg) {:persistent true}))
+      (lb/publish ch exchange routing-key (str msg) {:persistent true :user-id username}))
     (infof "closing producer %s" username)))
 
 (defn consume [{:keys [exchange routing-key queue username port] :as opts}
@@ -106,10 +106,10 @@
     (infof "consumer %10s: switching to instance at port %d" username port)
     (let [count-down (java.util.concurrent.CountDownLatch. message-count)] 
       (lb/qos ch prefetch)
-      (lc/subscribe ch queue (fn [ch {tag :delivery-tag rk :routing-key} body]
+      (lc/subscribe ch queue (fn [ch hdrs body]
                                (when (rmq/open? ch)
-                                 (lb/ack ch tag)
-                                 (infof "%10s: recv %s (%s)" username (String. body) rk)
+                                 (lb/ack ch (:delivery-tag hdrs))
+                                 (infof "%10s: recv rk:%s, payload:%s (user_id:%s)" username (String. body) (:routing-key hdrs) (:user-id hdrs))
                                  (when sleep-time
                                    (Thread/sleep sleep-time))
                                  (.countDown count-down))) 
@@ -186,22 +186,21 @@
              :ports [5672 5673 5672 5673]}))
     
   (time (let [p (future (produce
-                  {:exchange "K-ex-write"
-                   :queue "K-q-0"
-                   :vhost "VH_ppu"
-                   :host "localhost"
-                   :username "K"
-                   :password "K"
-                   :port 5672
-                   :routing-key "K.10.ALL"
-                   }
-                  {:messages (range 100)}))
-      c (future (consume
-                  {:queue "UA-q-0"
+                  {:exchange "UA-ex-write"
                    :vhost "VH_ppu"
                    :host "localhost"
                    :username "UA"
                    :password "UA"
+                   :port 5672
+                   :routing-key "UA.10-transformed.ALL"
+                   }
+                  {:messages (range 100)}))
+      c (future (consume
+                  {:queue "K-q-0"
+                   :vhost "VH_ppu"
+                   :host "localhost"
+                   :username "K"
+                   :password "K"
                    :port 5672}
                   {:prefetch 100
                    :message-count 100}))]
