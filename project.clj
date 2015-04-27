@@ -4,7 +4,7 @@
   :url "http://example.com/FIXME"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-  :dependencies [[org.clojure/clojure "1.7.0-beta1"]
+  :dependencies [[org.clojure/clojure "1.7.0-beta2"]
                  [com.novemberain/langohr "3.2.0"
                   :exclude [clj-http]] ; langohr relies on a clj-http version that is not compatible with clojure 1.7
                  [clj-http "1.1.1"] ; compatible with clojure 1.7
