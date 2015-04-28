@@ -21,9 +21,11 @@
                  [prismatic/schema "0.4.1"] ;data schema description and coercion
                  [rhizome "0.2.5"] ;dot visualization of graphs
                  [com.stuartsierra/component "0.2.3"] ; run different parts as components
+                 [metosin/compojure-api "0.20.0"] ; annotate routes with prismatic schema, coerce, validate, generate interactive API documentation
+                 [metosin/ring-swagger "0.20.1"] ;fix for transitive dep of compojure-api
                  ]
   :plugins [[lein-set-version "0.4.1"]]
   :profiles {:dev {:dependencies [[spyscope "0.1.5"]]}
-             :routing-compiler {:main routing.routing-rest
-                                :aot [routing.routing-rest]}})
+             :routing-compiler {:main routing.rest.server
+                                :aot [routing.rest.server]}})
 

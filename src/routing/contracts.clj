@@ -141,7 +141,7 @@ one covenant to messages sent via another covenant."
 
 
 ;;;;;;;;;;;;;;;; contract related public API ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defonce contracts (atom demo-contracts))
+(defonce contracts (atom empty-contracts))
 
 (s/defn replace-contracts!
   [data :- +Contracts+]
