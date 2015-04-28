@@ -55,7 +55,7 @@
                                   viz/dot->png
                                   (java.io.ByteArrayInputStream.)))
                           (resp/ok)
-                            (resp/content-type "image/png"))))
+                          (resp/content-type "image/png"))))
         (context* "/api" []
                   :tags ["contracts"]
                   (GET* "/contracts" []

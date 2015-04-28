@@ -25,10 +25,11 @@ routing.schemas
    :queues +Queues+
    :exchange s/Str
    :allocations +Allocations+
-   ;a user may represent multiple upstream users (à la transparent proxy)
    (s/optional-key :localusers) {+UserName+ +LocalUser+}
    (s/optional-key :delegation) {+UserName+ #{+CovenantId+}}
-   (s/optional-key :transparent-delegation) {+CovenantId+ +CovenantId+}})
+   (s/optional-key :transparent-delegation) {+CovenantId+ +CovenantId+}
+   ;(s/optional-key :transparent-proxy) #{+CovenantId+}
+   })
 
 (defschema +Covenant+
   {:from +UserName+
@@ -44,14 +45,17 @@ routing.schemas
 ;; Swagger can't handle schemas with arbitrary keys, so we can't use those 
 ;; instead use many arrays
 (defschema +Contracts-REST+
-  {:users [(assoc +PlatformUser+
-                  :allocations [{:queues [s/Str]
-                                 :covenant +CovenantId+}]
-                  (s/optional-key :localusers) [+LocalUser+]
-                  (s/optional-key :delegation) [{:to-user +UserName+
-                                                 :covenants #{+CovenantId+}}] 
-                  (s/optional-key :transparent-delegation) [{:source-covenant +CovenantId+
-                                                              :target-covenant +CovenantId+}])]
+  {:users [{:name +UserName+
+            :password s/Str
+            :exchange s/Str
+            :queues [s/Str]
+            :allocations [{:queues [s/Str]
+                           :covenant +CovenantId+}]
+            (s/optional-key :localusers) [+LocalUser+]
+            (s/optional-key :delegation) [{:to-user +UserName+
+                                           :covenants #{+CovenantId+}}] 
+            (s/optional-key :forwardings) [{:source-covenant +CovenantId+
+                                                 :target-covenant +CovenantId+}]}]
    :covenants [(assoc +Covenant+ :id +CovenantId+)]
    :collections [{:name s/Str
                   :covenants [+CovenantId+]}]})
@@ -59,7 +63,7 @@ routing.schemas
 (defn external->internal-contracts 
   "Convert submitted data structure into our internal format."
   [{:keys [users covenants collections]}]
-  {:users (into {} (for [{:keys [name password queues exchange allocations localusers delegation transparent-delegation]} users] 
+  {:users (into {} (for [{:keys [name password queues exchange allocations localusers delegation forwardings]} users] 
             [name
              {:name name 
               :password password 
@@ -67,7 +71,7 @@ routing.schemas
               :exchange exchange
               :allocations (into {} (for [{qs :queues c :covenant} allocations] [c (set qs)]))
               :localusers (reduce #(assoc % (:name %2) %2) {} localusers)
-              :transparent-delegation (into {} (for [{s :source-covenant t :target-covenant} transparent-delegation] [s t]))
+              :transparent-delegation (into {} (for [{s :source-covenant t :target-covenant} forwardings] [s t]))
               :delegation (into {} (for [{t :to-user c :covenants} delegation] [t (set c)]))}])) 
    :covenants (into {} (for [c covenants]
                          [(:id c) (dissoc c :id)]))
@@ -83,7 +87,7 @@ routing.schemas
              :exchange exchange
              :allocations (for [[id qs] allocations] {:queues (vec qs) :covenant id})
              :localusers (vals localusers)
-             :transparent-delegation (for [[f t] transparent-delegation] {:source-covenant f :target-covenant t})
+             :forwardings (for [[f t] transparent-delegation] {:source-covenant f :target-covenant t})
              :delegation (for [[n covs] delegation] {:to-user n :covenants (vec covs)})})
    :covenants (for [[id c] covenants] (assoc c :id id))
    :collections (for [[n ids] collections] {:name n :covenants (vec ids)})})
