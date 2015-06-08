@@ -27,9 +27,8 @@ routing.schemas
    :allocations +Allocations+
    (s/optional-key :localusers) {+UserName+ +LocalUser+}
    (s/optional-key :delegation) {+UserName+ #{+CovenantId+}}
-   (s/optional-key :transparent-delegation) {+CovenantId+ +CovenantId+}
-   ;(s/optional-key :transparent-proxy) #{+CovenantId+}
-   })
+   (s/optional-key :transparent-delegation) {+CovenantId+ {:id +CovenantId+
+                                                           (s/optional-key :collection) +CovenantCollectionId+}}})
 
 (defschema +Covenant+
   {:from +UserName+
@@ -41,21 +40,23 @@ routing.schemas
   {:users {+UserName+ +PlatformUser+}
    :covenants {+CovenantId+ +Covenant+}
    :collections {+CovenantCollectionId+ #{+CovenantId+}}})
+
 ;;;;;;;;;;;;;; Schema for Contracts via REST ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Swagger can't handle schemas with arbitrary keys, so we can't use those 
 ;; instead use many arrays
 (defschema +Contracts-REST+
   {:users [{:name +UserName+
             :password s/Str
-            :exchange s/Str
             :queues [s/Str]
+            :exchange s/Str
             :allocations [{:queues [s/Str]
                            :covenant +CovenantId+}]
             (s/optional-key :localusers) [+LocalUser+]
             (s/optional-key :delegation) [{:to-user +UserName+
                                            :covenants #{+CovenantId+}}] 
             (s/optional-key :forwardings) [{:source-covenant +CovenantId+
-                                                 :target-covenant +CovenantId+}]}]
+                                            :target-covenant +CovenantId+
+                                            (s/optional-key :collection) +CovenantCollectionId+}]}]
    :covenants [(assoc +Covenant+ :id +CovenantId+)]
    :collections [{:name s/Str
                   :covenants [+CovenantId+]}]})
@@ -71,7 +72,9 @@ routing.schemas
               :exchange exchange
               :allocations (into {} (for [{qs :queues c :covenant} allocations] [c (set qs)]))
               :localusers (reduce #(assoc % (:name %2) %2) {} localusers)
-              :transparent-delegation (into {} (for [{s :source-covenant t :target-covenant} forwardings] [s t]))
+              :transparent-delegation (into {} (for [{s :source-covenant t :target-covenant c :collection} forwardings
+                                                     :let [m {:id t}]] 
+                                                 [s (if c (assoc m :collection c) m)]))
               :delegation (into {} (for [{t :to-user c :covenants} delegation] [t (set c)]))}])) 
    :covenants (into {} (for [c covenants]
                          [(:id c) (dissoc c :id)]))
@@ -87,7 +90,11 @@ routing.schemas
              :exchange exchange
              :allocations (for [[id qs] allocations] {:queues (vec qs) :covenant id})
              :localusers (vals localusers)
-             :forwardings (for [[f t] transparent-delegation] {:source-covenant f :target-covenant t})
+             :forwardings (for [[f {:keys [id collection]}] transparent-delegation
+                                :let [m {:source-covenant f :target-covenant id}]] 
+                            (if collection
+                              (assoc m :collection collection)
+                              m))
              :delegation (for [[n covs] delegation] {:to-user n :covenants (vec covs)})})
    :covenants (for [[id c] covenants] (assoc c :id id))
    :collections (for [[n ids] collections] {:name n :covenants (vec ids)})})
