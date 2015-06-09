@@ -8,8 +8,7 @@
             [routing.contracts :as con]
             [routing.rest.model :as model]
             [ring.util.http-response :as resp]
-            [schema.coerce :as sc])
-  (:gen-class))
+            [schema.coerce :as sc]))
 ;; workaround for bug in compojure-api: can't handle schemas with arbitrary keys (which we need for our current contracts data structure)
 (defn json-coercion-matcher
   "A matcher that coerces keywords and keyword enums from strings, and longs and doubles
@@ -106,10 +105,3 @@
 
 (defn start [options]
   (jetty/run-jetty #'handler (assoc options :join? false)))
-
-(defn -main
-  ([port]
-   (schema.core/set-fn-validation! true)
-   (start {:port (Integer/parseInt port)}))
-  ([]
-   (-main "5000")))

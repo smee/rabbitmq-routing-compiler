@@ -26,6 +26,6 @@
                  ]
   :plugins [[lein-set-version "0.4.1"]]
   :profiles {:dev {:dependencies [[spyscope "0.1.5"]]}
-             :routing-compiler {:main routing.rest.server
-                                :aot [routing.rest.server]}})
+             :routing-compiler {:main run
+                                :aot [run]}})
 
