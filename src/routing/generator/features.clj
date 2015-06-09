@@ -64,16 +64,22 @@ there is no outgoing binding matching the routing key of a message."
                :auto_delete false 
                :arguments {}}}])
 
-(defn- generate-private-resources-for [user exchange vhost]
-  [{:resource :exchange 
-    :vhost vhost
-    :arguments {:name exchange 
-                :type "topic" 
-                :internal false 
-                :durable true 
-                :auto_delete false 
-                :arguments {:alternate-exchange invalid_routing_key}}}
-   {:resource :exchange 
+(deffeature generate-private-resources-for-users 
+  "Create user specific resource within a vhost."
+  [{:keys [users]}
+   _
+   vhost-of]
+  (for [{user :name ex :exchange} (vals users)
+        :let [vhost (vhost-of user)]]
+    [{:resource :exchange 
+      :vhost vhost
+      :arguments {:name ex 
+                  :type "topic" 
+                  :internal false 
+                  :durable true 
+                  :auto_delete false 
+                  :arguments {:alternate-exchange invalid_routing_key}}}
+     {:resource :exchange 
       :vhost vhost
       :arguments {:name (user-exchange-write-internal user)  
                   :type "topic" 
@@ -81,14 +87,14 @@ there is no outgoing binding matching the routing key of a message."
                   :durable true 
                   :auto_delete false 
                   :arguments {:alternate-exchange invalid_routing_key}}}
-   {:resource :exchange 
-    :vhost vhost
-    :arguments {:name (user-exchange-read user) 
-                :type "topic" 
-                :internal true 
-                :durable true 
-                :auto_delete false 
-                :arguments {:alternate-exchange invalid_routing_key}}}])
+     {:resource :exchange 
+      :vhost vhost
+      :arguments {:name (user-exchange-read user) 
+                  :type "topic" 
+                  :internal true 
+                  :durable true 
+                  :auto_delete false 
+                  :arguments {:alternate-exchange invalid_routing_key}}}]))
 
 (deffeature construct-admin-declarations 
   "Create ppu vhost, grant all permissions to the management-user for all generated vhosts and the ppu vhost."
@@ -126,10 +132,13 @@ there is no outgoing binding matching the routing key of a message."
   "Construct routing that uses only routing keys, no header arguments at all.
 All routing keys have the following structure:
     SENDER_ID.tag.COVENANTCOLLECTION"
-  [{:keys [users covenants collections]} {vhost :ppu-vhost} vhost-of]
-  (generate-invalid-routing-exchange vhost)
-  (for [{user :name ex :exchange} (vals users)] 
-    [(generate-private-resources-for user ex vhost)
+  [{:keys [users covenants collections] :as contracts} 
+   {ppu-vhost :ppu-vhost :as credentials} 
+   _]
+  (generate-invalid-routing-exchange ppu-vhost)
+  (for [{user :name ex :exchange} (vals users)
+        :let [vhost ppu-vhost]] 
+    [(generate-private-resources-for-users contracts credentials (constantly ppu-vhost))
      {:resource :exchange-binding 
       :vhost vhost
       :from ex 
@@ -216,8 +225,7 @@ Users have no permissions to change anything themselves."
   [{:keys [users covenants]} _ vhost-of]
   (for [[user {:keys [queues allocations exchange]}] users 
         :let [vh (vhost-of user)]] 
-    [(generate-private-resources-for user exchange vh)
-     (generate-invalid-routing-exchange vh)
+    [(generate-invalid-routing-exchange vh)
      (for [[c-id queues] allocations, 
            queue queues
            :let [{:keys [from tag]} (get covenants c-id)

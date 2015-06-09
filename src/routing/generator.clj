@@ -87,6 +87,7 @@ and the credentials."
          ((juxt gen/construct-users
                 gen/construct-user-vhosts
                 gen/construct-permissions
+                gen/generate-private-resources-for-users
                 gen/construct-private-queue-bindings
                 lu/construct-localusers
                 lu/construct-localuser-covenants                
@@ -110,6 +111,7 @@ and the credentials."
   (as-flat-set
     ((juxt gen/construct-users
            gen/construct-permissions
+           gen/generate-private-resources-for-users
            gen/construct-private-queue-bindings
            lu/construct-localusers
            lu/construct-localuser-covenants
@@ -214,7 +216,7 @@ currently present within a rabbitmq instance."
   (time (update-routing! 
           ;routing.contracts/empty-contracts
           @routing.contracts/contracts
-          @routing.routing-rest/management-api
+          @routing.rest.model/management-api
           ;create-all-separate-vhosts
           create-all-single-vhost
           ))
@@ -223,7 +225,7 @@ currently present within a rabbitmq instance."
           ;routing.contracts/empty-contracts
           ;@routing.contracts/contracts
           routing.contracts/demo-transparent-delegation
-          @routing.routing-rest/management-api
+          @routing.rest.model/management-api
 ;          (assoc @routing.routing-rest/management-api :node-urls ["http://localhost:15673"])
           ;create-all-separate-vhosts
           create-all-single-vhost
