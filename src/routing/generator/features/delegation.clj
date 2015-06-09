@@ -58,26 +58,13 @@ is a subcontractor."
    {{shovel-user :user shovel-password :password} :shovel} 
    vhost-of]
   (for [[delegating-user {ds :transparent-delegation ex-w :exchange}] users,
-        [cov-from {cov-to :id collection :collection}] ds,
+        [cov-from cov-to] ds,
         :let [{cf-from :from cf-to :to cf-tag :tag} (get covenants cov-from)
               {ct-from :from ct-to :to ct-tag :tag} (get covenants cov-to)
               vh-from (vhost-of cf-from)
               vh-to (vhost-of ct-to)
               ex-w-from (-> cf-from users :exchange)
-              queue (format "delegation_'%s'->'%s'" cov-from cov-to)
-              shovel {:resource :shovel
-                      :vhost vh-to
-                      :name queue 
-                      :src-uri (format "amqp://%s:%s@/%s" shovel-user shovel-password vh-from)
-                      :src-queue queue
-                      :dest-uri (format "amqp://%s:%s@/%s" shovel-user shovel-password vh-to)
-                      :dest-exchange ex-w 
-                      :prefetch-count 100
-                      :reconnect-delay 1
-                      :add-forward-headers false 
-                      :ack-mode "on-publish"
-                      :publish-properties {:user_id delegating-user}; works only if the shovel user has tag 'impersonator' 
-                      :dest-exchange-key (format "%s.%s" delegating-user ct-tag)}]]    
+              queue (format "delegation_'%s'->'%s'" cov-from cov-to)]]    
     
     [{:resource :queue
         :vhost vh-from
@@ -90,9 +77,17 @@ is a subcontractor."
         :to queue 
         :from ex-w-from
         :arguments {:routing_key (format "%s.%s.#" cf-from cf-tag) 
-                    :arguments {}}}     
-     (println collection)
-     (if collection
-       ; if there is a covenant collection, we exclusively want to publish messages using this collection in the routing key
-       (assoc shovel :dest-exchange-key (format "%s.%s.%s" delegating-user ct-tag collection))
-       shovel)]))
+                    :arguments {}}}       
+     {:resource :shovel
+        :vhost vh-to
+        :name queue 
+        :src-uri (format "amqp://%s:%s@/%s" shovel-user shovel-password vh-from)
+        :src-queue queue
+        :dest-uri (format "amqp://%s:%s@/%s" shovel-user shovel-password vh-to)
+        :dest-exchange ex-w 
+        :prefetch-count 100
+        :reconnect-delay 1
+        :add-forward-headers false 
+        :ack-mode "on-publish"
+        :publish-properties {:user_id delegating-user}; works only if the shovel user has tag 'impersonator' 
+        :dest-exchange-key (format "%s.%s" delegating-user ct-tag)}]))

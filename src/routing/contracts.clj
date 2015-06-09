@@ -113,9 +113,8 @@ one covenant to messages sent via another covenant."
                  :exchange "DA-ex-write"
                  :allocations {"K->DA" #{"DA-q-0"}
                                "UA->DA" #{"DA-q-1"}}
-                 :transparent-delegation {"K->DA" {:id "DA->UA"}
-                                          "UA->DA" {:id "DA->K"
-                                                    :collection "c1"}}}
+                 :transparent-delegation {"K->DA" "DA->UA"
+                                          "UA->DA" "DA->K"}}
            "UA" {:name "UA" 
                  :password (pw "UA")
                  :queues #{"UA-q-0"}
@@ -138,7 +137,7 @@ one covenant to messages sent via another covenant."
                "UA->DA" {:from "UA" 
                          :to "DA" 
                          :tag "10-transformed"}}
-   :collections {"c1" ["DA->K"]}})
+   :collections {}})
 
 
 ;;;;;;;;;;;;;;;; contract related public API ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
