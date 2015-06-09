@@ -215,7 +215,7 @@ currently present within a rabbitmq instance."
   
   (time (update-routing! 
           ;routing.contracts/empty-contracts
-          @routing.contracts/contracts
+          routing.contracts/demo-contracts
           @routing.rest.model/management-api
           ;create-all-separate-vhosts
           create-all-single-vhost

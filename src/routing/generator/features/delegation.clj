@@ -57,37 +57,66 @@ is a subcontractor."
   [{:keys [users collections covenants] :as contracts} 
    {{shovel-user :user shovel-password :password} :shovel} 
    vhost-of]
-  (for [[delegating-user {ds :transparent-delegation ex-w :exchange}] users,
-        [cov-from cov-to] ds,
+  (for [[delegating-user {ds :transparent-delegation ex-w :exchange}] users
+        :let [delegation-by-tag (group-by #(:tag (get covenants (second %))) ds)]] 
+    (for[mappings (vals delegation-by-tag)
+         [cov-from cov-to] mappings,
         :let [{cf-from :from cf-to :to cf-tag :tag} (get covenants cov-from)
               {ct-from :from ct-to :to ct-tag :tag} (get covenants cov-to)
               vh-from (vhost-of cf-from)
               vh-to (vhost-of ct-to)
               ex-w-from (-> cf-from users :exchange)
-              queue (format "delegation_'%s'->'%s'" cov-from cov-to)]]    
-    
-    [{:resource :queue
+              ex-w-derived (str delegating-user "_delegation_tag_" ct-tag)
+              queue (format "delegation_%s.%s" delegating-user ct-tag)]]
+      [{:resource :queue
         :vhost vh-from
         :arguments {:name queue 
                     :durable true 
                     :auto_delete false 
                     :arguments {:x-dead-letter-exchange "admin.dropped"}}}
-     {:resource :queue-binding 
+       {:resource :exchange
+        :vhost vh-to
+        :arguments {:name ex-w-derived 
+               :type "topic" 
+               :internal false 
+               :durable true 
+               :auto_delete false 
+               :arguments {}}}
+       {:resource :queue-binding 
         :vhost vh-from
         :to queue 
         :from ex-w-from
         :arguments {:routing_key (format "%s.%s.#" cf-from cf-tag) 
                     :arguments {}}}       
-     {:resource :shovel
+       {:resource :shovel
         :vhost vh-to
         :name queue 
         :src-uri (format "amqp://%s:%s@/%s" shovel-user shovel-password vh-from)
         :src-queue queue
         :dest-uri (format "amqp://%s:%s@/%s" shovel-user shovel-password vh-to)
-        :dest-exchange ex-w 
+        :dest-exchange ex-w-derived 
         :prefetch-count 100
         :reconnect-delay 1
         :add-forward-headers false 
         :ack-mode "on-publish"
         :publish-properties {:user_id delegating-user}; works only if the shovel user has tag 'impersonator' 
-        :dest-exchange-key (format "%s.%s" delegating-user ct-tag)}]))
+        :dest-exchange-key (format "%s.%s" delegating-user ct-tag)}
+       ;; TODO queue bindings from ex-w-derived to read exchanges of all recipients
+       ; iterate all collections, create bindings for each access right
+       {:resource :exchange-binding 
+        :vhost vh-to
+        :from ex-w-derived 
+        :to (user-exchange-read ct-to)
+        :arguments {:routing_key (format "*.%s" ct-tag) 
+                    :arguments {}}}
+     ; create specific bindings for all covenant collections
+     (for [[ccollection-id cov-ids] collections, 
+           cov-id cov-ids
+           :let [{:keys [from to tag]} (get covenants cov-id)]
+           :when (and (= from ct-from) (= to ct-to) (= tag ct-tag))]   
+       {:resource :exchange-binding 
+        :vhost vh-to
+        :from ex-w-derived 
+        :to (user-exchange-read to)
+        :arguments {:routing_key (format "*.%s.%s" ct-tag ccollection-id) 
+                    :arguments {}}})])))

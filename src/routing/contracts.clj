@@ -112,14 +112,21 @@ one covenant to messages sent via another covenant."
                  :queues #{"DA-q-0" "DA-q-1"}
                  :exchange "DA-ex-write"
                  :allocations {"K->DA" #{"DA-q-0"}
-                               "UA->DA" #{"DA-q-1"}}
-                 :transparent-delegation {"K->DA" "DA->UA"
-                                          "UA->DA" "DA->K"}}
-           "UA" {:name "UA" 
-                 :password (pw "UA")
-                 :queues #{"UA-q-0"}
-                 :exchange "UA-ex-write"
-                 :allocations {"DA->UA" #{"UA-q-0"}}}
+                               "UA1->DA" #{"DA-q-1"}}
+                 :transparent-delegation [["K->DA" "DA->UA1"] 
+                                          ["K->DA" "DA->UA2"]
+                                          ["UA1->DA" "DA->K"] 
+                                          ["UA2->DA" "DA->K"]]}
+           "UA1" {:name "UA1" 
+                 :password (pw "UA1")
+                 :queues #{"UA1-q-0"}
+                 :exchange "UA1-ex-write"
+                 :allocations {"DA->UA1" #{"UA1-q-0"}}}
+           "UA2" {:name "UA2" 
+                 :password (pw "UA2")
+                 :queues #{"UA2-q-0"}
+                 :exchange "UA2-ex-write"
+                 :allocations {"DA->UA2" #{"UA2-q-0"}}}
            "K" {:name "K" 
                 :password (pw "K")
                 :queues #{"K-q-0"}
@@ -131,12 +138,18 @@ one covenant to messages sent via another covenant."
                "DA->K" {:from "DA" 
                         :to "K" 
                         :tag "20"}
-               "DA->UA" {:from "DA" 
-                         :to "UA" 
+               "DA->UA1" {:from "DA" 
+                         :to "UA1" 
                          :tag "10"}
-               "UA->DA" {:from "UA" 
+               "UA1->DA" {:from "UA1" 
                          :to "DA" 
-                         :tag "10-transformed"}}
+                         :tag "10-transformed1"}
+               "DA->UA2" {:from "DA" 
+                         :to "UA2" 
+                         :tag "10"}
+               "UA2->DA" {:from "UA2" 
+                         :to "DA" 
+                         :tag "10-transformed2"}}
    :collections {}})
 
 

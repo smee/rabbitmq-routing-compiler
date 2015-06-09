@@ -27,7 +27,7 @@ routing.schemas
    :allocations +Allocations+
    (s/optional-key :localusers) {+UserName+ +LocalUser+}
    (s/optional-key :delegation) {+UserName+ #{+CovenantId+}}
-   (s/optional-key :transparent-delegation) {+CovenantId+ +CovenantId+}
+   (s/optional-key :transparent-delegation) [[(s/one +CovenantId+ "from-covenant") (s/one +CovenantId+ "to-covenant")]]
    ;(s/optional-key :transparent-proxy) #{+CovenantId+}
    })
 
@@ -55,7 +55,7 @@ routing.schemas
             (s/optional-key :delegation) [{:to-user +UserName+
                                            :covenants #{+CovenantId+}}] 
             (s/optional-key :forwardings) [{:source-covenant +CovenantId+
-                                                 :target-covenant +CovenantId+}]}]
+                                            :target-covenant +CovenantId+}]}]
    :covenants [(assoc +Covenant+ :id +CovenantId+)]
    :collections [{:name s/Str
                   :covenants [+CovenantId+]}]})
@@ -71,7 +71,7 @@ routing.schemas
               :exchange exchange
               :allocations (into {} (for [{qs :queues c :covenant} allocations] [c (set qs)]))
               :localusers (reduce #(assoc % (:name %2) %2) {} localusers)
-              :transparent-delegation (into {} (for [{s :source-covenant t :target-covenant} forwardings] [s t]))
+              :transparent-delegation (for [{s :source-covenant t :target-covenant} forwardings] [s t])
               :delegation (into {} (for [{t :to-user c :covenants} delegation] [t (set c)]))}])) 
    :covenants (into {} (for [c covenants]
                          [(:id c) (dissoc c :id)]))
