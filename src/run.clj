@@ -1,7 +1,6 @@
 (ns run
   (:gen-class))
 
-(declare ^:dynamic port)
 
 (defn -main 
   ([] (-main "5000"))
@@ -14,4 +13,6 @@
              (schema.core/set-fn-validation! true)
              
              (require 'routing.rest.server)             
-             (routing.rest.server/start {:port (Integer/parseInt ~port)})))))
+             (routing.rest.server/start {:port (Integer/parseInt ~port)})
+             
+             (printlf "RoutingCompiler ready. Please open the admin UI at http://localhost:%s" ~port)))))
